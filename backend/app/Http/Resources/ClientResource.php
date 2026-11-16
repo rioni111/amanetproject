@@ -22,7 +22,10 @@ class ClientResource extends JsonResource
             'reference_number' => $this->reference_number,
             'matters_count' => $this->whenCounted('matters'),
             'active_matters_count' => $this->whenHas('active_matters_count', fn () => (int) $this->active_matters_count),
+            'closed_matters_count' => $this->whenHas('closed_matters_count', fn () => (int) $this->closed_matters_count),
+            'archived_matters_count' => $this->whenHas('archived_matters_count', fn () => (int) $this->archived_matters_count),
             'created_at' => $this->created_at?->toIso8601String(),
+            'updated_at' => $this->updated_at?->toIso8601String(),
         ];
     }
 }

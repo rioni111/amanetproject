@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { API_URL, DEMO_EMAIL, SPA_HEADERS, loginThroughUi } from "./fixtures";
+import { API_URL, DEMO_EMAIL, SESSION_COOKIE, SPA_HEADERS, loginThroughUi } from "./fixtures";
 
 test.describe("authentication", () => {
   test("login page renders an accessible form", async ({ page }) => {
@@ -63,7 +63,7 @@ test.describe("authentication", () => {
     expect(storage.local).toEqual({});
     expect(storage.session).toEqual({});
 
-    const session = (await context.cookies()).find((cookie) => cookie.name === "lexora_session");
+    const session = (await context.cookies()).find((cookie) => cookie.name === SESSION_COOKIE);
     expect(session?.httpOnly).toBe(true);
     expect(session?.sameSite).toBe("Lax");
   });

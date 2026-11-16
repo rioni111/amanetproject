@@ -3,7 +3,11 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\MatterActivityController;
 use App\Http\Controllers\Api\MatterController;
+use App\Http\Controllers\Api\MatterLifecycleController;
+use App\Http\Controllers\Api\MatterNoteController;
+use App\Http\Controllers\Api\MatterTaskController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -28,6 +32,24 @@ Route::prefix('auth')->name('auth.')->group(function () {
 Route::middleware(['auth:sanctum', 'admin', 'throttle:api'])->group(function () {
     Route::get('dashboard/summary', DashboardController::class)->name('dashboard.summary');
 
-    Route::get('matters', [MatterController::class, 'index'])->name('matters.index');
-    Route::get('clients', [ClientController::class, 'index'])->name('clients.index');
+    // Clients (DELETE only succeeds for clients without matters — retention rule, 409 otherwise).
+    Route::apiResource('clients', ClientController::class)->whereNumber('client');
+
+    // Matters. Matters are never deleted: they are closed and archived instead.
+    Route::apiResource('matters', MatterController::class)->except('destroy')->whereNumber('matter');
+    Route::prefix('matters/{matter}')->whereNumber('matter')->name('matters.')->group(function () {
+        Route::post('status', [MatterLifecycleController::class, 'status'])->name('status');
+        Route::post('archive', [MatterLifecycleController::class, 'archive'])->name('archive');
+        Route::post('restore', [MatterLifecycleController::class, 'restore'])->name('restore');
+        Route::get('activity', MatterActivityController::class)->name('activity');
+    });
+
+    // Tasks and internal notes are nested and scoped: /matters/1/tasks/9 is 404 unless task 9
+    // belongs to matter 1.
+    Route::scopeBindings()->group(function () {
+        Route::apiResource('matters.tasks', MatterTaskController::class)->except('show')
+            ->whereNumber(['matter', 'task']);
+        Route::apiResource('matters.notes', MatterNoteController::class)->except('show')
+            ->whereNumber(['matter', 'note']);
+    });
 });

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\Priority;
 use App\Enums\TaskStatus;
+use App\Models\Concerns\HasLockVersion;
 use Database\Factories\TaskFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -13,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Task extends Model
 {
     /** @use HasFactory<TaskFactory> */
-    use HasFactory;
+    use HasFactory, HasLockVersion;
 
     protected $fillable = [
         'matter_id',
@@ -33,7 +34,18 @@ class Task extends Model
             'priority' => Priority::class,
             'due_at' => 'immutable_datetime',
             'completed_at' => 'immutable_datetime',
+            'lock_version' => 'integer',
         ];
+    }
+
+    public function isOpen(): bool
+    {
+        return $this->status !== TaskStatus::Completed;
+    }
+
+    public function isOverdue(): bool
+    {
+        return $this->isOpen() && $this->due_at !== null && $this->due_at->isPast();
     }
 
     public function matter(): BelongsTo

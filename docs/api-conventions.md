@@ -40,7 +40,8 @@ authentication (Laravel Sanctum SPA mode).
 | 400 | Session login attempted outside the SPA (no stateful origin) | `Session authentication is only available to the Lexora web application.` |
 | 401 | No/expired session | `Unauthenticated.` |
 | 403 | Authenticated but not allowed (policy / admin middleware) | `This action is unauthorized.` |
-| 404 | Unknown endpoint or record (no model names leaked) | `The requested resource was not found.` |
+| 404 | Unknown endpoint or record (no model names leaked); also a task/note id that belongs to another matter | `The requested resource was not found.` |
+| 409 | Conflict: stale `lock_version`, archived (read-only) matter, or deleting a client that has matters | `This matter is archived and read-only. Restore it to make changes.` |
 | 419 | Missing/invalid CSRF token | `CSRF token mismatch.` |
 | 422 | Validation failed / wrong credentials | `These credentials do not match our records.` + `errors.email` |
 | 429 | Rate limit; includes `Retry-After` header | `Too many login attempts. Please try again in 58 seconds.` |
@@ -48,6 +49,16 @@ authentication (Laravel Sanctum SPA mode).
 
 **Formats**: timestamps are ISO-8601 with offset in UTC (`2026-11-19T17:00:00+00:00`); enums are lower-case snake strings
 (`in_progress`); IDs are integers. Internal fields (password hashes, remember tokens, storage paths) are never serialised.
+
+**Calendar dates** (Phase 2): deadlines and opening dates are sent and edited as `YYYY-MM-DD` (`due_date`, `opened_date`),
+interpreted in the firm's time zone (`LEXORA_TIMEZONE`). A deadline is stored as the end of that day; responses carry both the
+date (`due_date`) and the UTC instant (`due_at`). Clients must display the date field, never re-derive it from the instant.
+
+**Optimistic concurrency** (Phase 2): matters, tasks and notes expose `lock_version`. Edits may send the version they were based
+on; if it is no longer current the API answers **409** and changes nothing. Omitting it means "last write wins".
+
+**Server-managed fields are rejected, not ignored** (422 `prohibited`): e.g. `matter_number`, `closed_at`, `archived_at`,
+`created_by`, `author_id`, `matter_id`, `completed_at`.
 
 ## Endpoints (Phase 1)
 
@@ -62,15 +73,59 @@ authentication (Laravel Sanctum SPA mode).
 | GET | `/api/clients` | admin | Paginated clients |
 | GET | `/up` | – | Health check |
 
+## Endpoints (Phase 2)
+
+All require an administrator session (`auth:sanctum` + `admin` + `throttle:api`) and, for writes, the CSRF header.
+
+| Method | Path | Body / notes | Success |
+| --- | --- | --- | --- |
+| POST | `/api/clients` | `name*`, `client_type*`, `email`, `phone`, `address`, `reference_number` (unique) | 201 `{ data: Client }` |
+| GET | `/api/clients/{client}` | Client with `matters_count`, `active_/closed_/archived_matters_count` | 200 |
+| PATCH | `/api/clients/{client}` | any client field | 200 |
+| DELETE | `/api/clients/{client}` | only when the client has no matters (otherwise 409) | 204 |
+| POST | `/api/matters` | `title*`, `client_id*`, `priority`, `status` (open/in_progress/on_hold), `matter_type`, `description`, `opened_date`, `due_date` | 201 `{ data: Matter }` (number generated) |
+| GET | `/api/matters/{matter}` | Matter + client reference + `tasks_count`, `open_/overdue_/completed_tasks_count`, `notes_count` | 200 |
+| PATCH | `/api/matters/{matter}` | `title`, `description`, `client_id`, `matter_type`, `priority`, `opened_date`, `due_date`, `lock_version` (status → 422) | 200 |
+| POST | `/api/matters/{matter}/status` | `status*` (not `archived`), `lock_version`; invalid transition → 422 `errors.status` | 200 |
+| POST | `/api/matters/{matter}/archive` | `lock_version` | 200 |
+| POST | `/api/matters/{matter}/restore` | `lock_version`; returns to the status held before archiving | 200 |
+| GET | `/api/matters/{matter}/activity` | `page`, `per_page` (≤100); newest first | 200 paginated `ActivityEvent` |
+| GET | `/api/matters/{matter}/tasks` | `status` = `todo`/`in_progress`/`completed`/`open`; open first, by deadline | 200 paginated `Task` |
+| POST | `/api/matters/{matter}/tasks` | `title*`, `description`, `status`, `priority`, `due_date` | 201 `{ data: Task }` |
+| PATCH | `/api/matters/{matter}/tasks/{task}` | any task field, `lock_version`; status drives `completed_at` | 200 |
+| DELETE | `/api/matters/{matter}/tasks/{task}` | recorded as `task.deleted` | 204 |
+| GET | `/api/matters/{matter}/notes` | newest first | 200 paginated `MatterNote` |
+| POST | `/api/matters/{matter}/notes` | `body*` (plain text, ≤ 10 000) | 201 |
+| PATCH | `/api/matters/{matter}/notes/{note}` | `body*`, `lock_version` | 200 |
+| DELETE | `/api/matters/{matter}/notes/{note}` | text removed; `note.deleted` event kept | 204 |
+
+Writes to an **archived** matter (details, status, tasks, notes) answer 409 until it is restored.
+
+Why a separate status endpoint instead of `status` in PATCH: transitions have rules, side effects on lifecycle timestamps and
+their own history event; a dedicated action makes the allowed moves explicit (`allowed_transitions` in every Matter payload)
+and keeps "edit details" from silently changing the lifecycle.
+
+Phase 2 objects (additions):
+
+- **Matter**: `opened_date`, `due_date`, `archived_from_status`, `created_at`, `lock_version`, `allowed_transitions[]`, and on
+  the detail endpoint the task/note counters above. `client` gains `reference_number` on the detail endpoint.
+- **Task**: `id, matter_id, title, description, status, priority, is_open, is_overdue, due_at, due_date, completed_at,
+  created_by {id, name}, created_at, updated_at, lock_version`.
+- **MatterNote**: `id, matter_id, body, author {id, name}, is_edited, created_at, updated_at, lock_version`.
+- **ActivityEvent**: `id, event_type, description, actor {type, label}, subject_type, subject_id, metadata, occurred_at`.
+  Metadata only holds non-confidential values (codes, dates, titles, changed field names) — never note text or descriptions.
+
 ### `GET /api/matters`
 
 | Param | Values |
 | --- | --- |
-| `search` | ≤ 100 chars; matches title, matter number, matter type, client name |
+| `search` | ≤ 100 chars; matches title, matter number, matter type, client name, client reference (Phase 2) |
 | `status` | `open`, `in_progress`, `on_hold`, `closed`, `archived`, or `active` (open + in progress + on hold) |
 | `priority` | `low`, `medium`, `high`, `urgent` |
 | `client_id` | integer |
-| `sort` | `updated_at` (default), `opened_at`, `due_at` (nulls last), `matter_number`, `title`, `priority` (by weight) |
+| `matter_type` | exact matter type (Phase 2) |
+| `deadline` | `overdue`, `upcoming` (dashboard window), `none` (Phase 2) |
+| `sort` | `updated_at` (default), `created_at` (Phase 2), `opened_at`, `due_at` (nulls last), `matter_number`, `title`, `priority` (by weight) |
 | `direction` | `asc` / `desc` (sensible default per sort) |
 | `page`, `per_page` | pagination |
 
@@ -81,7 +136,7 @@ closed_at, archived_at, updated_at, client {id, name, client_type}, open_tasks_c
 
 | Param | Values |
 | --- | --- |
-| `search` | name, email, reference number |
+| `search` | name, email, reference number, phone (Phase 2) |
 | `type` | `individual`, `organization` |
 | `sort` | `name` (default), `created_at`, `matters_count` |
 | `direction`, `page`, `per_page` | as above |

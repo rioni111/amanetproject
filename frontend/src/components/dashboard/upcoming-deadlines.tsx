@@ -52,7 +52,7 @@ export function UpcomingDeadlines({ matters, windowDays, overdueCount }: Upcomin
         ) : (
           <ol className="divide-y divide-border">
             {matters.map((matter) => {
-              const urgency = deadlineUrgency(matter.due_at, matter.is_active);
+              const urgency = deadlineUrgency(matter.due_date ?? matter.due_at, matter.is_active);
               return (
                 <li key={matter.id} className="flex items-center gap-4 py-3.5 first:pt-1 last:pb-0">
                   <time
@@ -60,9 +60,11 @@ export function UpcomingDeadlines({ matters, windowDays, overdueCount }: Upcomin
                     className="flex size-11 shrink-0 flex-col items-center justify-center rounded-lg border border-border bg-surface-muted leading-none"
                   >
                     <span className="text-[10px] font-semibold tracking-wider text-subtle-foreground uppercase">
-                      {formatMonth(matter.due_at!)}
+                      {formatMonth((matter.due_date ?? matter.due_at)!)}
                     </span>
-                    <span className="mt-1 text-base font-semibold text-foreground tabular-nums">{formatDay(matter.due_at!)}</span>
+                    <span className="mt-1 text-base font-semibold text-foreground tabular-nums">
+                      {formatDay((matter.due_date ?? matter.due_at)!)}
+                    </span>
                   </time>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground" title={matter.title}>
@@ -76,7 +78,7 @@ export function UpcomingDeadlines({ matters, windowDays, overdueCount }: Upcomin
                     <span
                       className={cn("rounded-full border px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap", URGENCY_CHIP[urgency])}
                     >
-                      {relativeDays(matter.due_at!)}
+                      {relativeDays((matter.due_date ?? matter.due_at)!)}
                     </span>
                     <PriorityBadge priority={matter.priority} className="text-xs" />
                   </div>

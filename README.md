@@ -3,25 +3,26 @@
 A legal matter-management and document-signing platform built for the **Amanet Full Stack Engineer take-home assignment**.
 "Lexora Workspace" is the product identity used for the UI. All clients and matters are **fictional**.
 
-> **Status: Phase 1 of 7 complete** — foundation, architecture, database, authentication and premium UI.
-> See [`docs/PHASE_1_IMPLEMENTATION_REPORT.md`](docs/PHASE_1_IMPLEMENTATION_REPORT.md) for the verified scope, and
-> [`docs/implementation-phases.md`](docs/implementation-phases.md) for the roadmap.
+> **Status: Phase 2 of 7 complete** — matter, client, task and internal-note management with activity history, on top of the
+> Phase 1 foundation. Reports: [Phase 1](docs/PHASE_1_IMPLEMENTATION_REPORT.md) · [Phase 2](docs/PHASE_2_IMPLEMENTATION_REPORT.md) ·
+> roadmap in [`docs/implementation-phases.md`](docs/implementation-phases.md).
 
 ---
 
 ## What it does (today)
 
-| Area | Phase 1 capability |
+| Area | Capability |
 | --- | --- |
 | Authentication | Administrator sign-in/out with Laravel Sanctum **session cookies** (HTTP-only), CSRF protection, login rate limiting, session regeneration |
-| Dashboard | Live aggregates from PostgreSQL: active matters, clients, upcoming/overdue deadlines, open/overdue tasks, status pipeline, recent matters, upcoming deadlines |
-| Matters | Read-only list with search, status/priority filters, sorting and pagination |
-| Clients | Read-only list with search, type filter, sorting, pagination and matter counts |
-| Data model | Users (admin role), clients, matters, tasks, internal notes, append-only activity history |
-| UI | Responsive app shell, mobile navigation drawer, loading/empty/error states, WCAG 2.2 AA-minded |
+| Dashboard | Live aggregates from PostgreSQL: active matters, clients, upcoming/overdue deadlines, open/overdue tasks, status pipeline, recent matters, upcoming deadlines — refreshed after every change |
+| Clients | List (search name/email/phone/reference, type filter, sorting, pagination), create, edit, detail page with matters, delete only while a client has no matters |
+| Matters | List with search, status/priority/deadline/client filters, sorting, quick actions; create (unique `LEX-YYYY-NNNN` number), edit, status transitions, priority, deadlines, archive & restore |
+| Matter workspace | `/matters/{id}`: overview, **tasks** (create, edit, complete/reopen, delete), **internal notes** (create, edit, delete — admin-only), **activity timeline** |
+| Data integrity | Each change and its history entry in one transaction; optimistic concurrency (409 on stale edits); append-only history |
+| UI | Responsive desktop/tablet/mobile, accessible dialogs and tabs, loading/empty/error states, success toasts, WCAG 2.2 AA-minded |
 
-Planned for later phases: matter/client/task/note CRUD (2), PDF documents & versions (3), secure client upload requests (4),
-in-house PDF e-signing (5), email + notifications + signing progress (6), hardening and polish (7).
+Planned for later phases: PDF documents & versions (3), secure client upload requests (4), in-house PDF e-signing (5),
+email + notifications + signing progress (6), hardening and polish (7).
 
 ## Technology
 
@@ -67,8 +68,8 @@ Three launchers in the project root automate everything on Windows (PowerShell 5
 
 | Launcher | What it does |
 | --- | --- |
-| `setup-windows.bat` | Picks Laragon's newest PHP ≥ 8.2 and enables `pdo_pgsql`/`pgsql` in its `php.ini` (backup kept as `php.ini.lexora-backup`). Uses Laragon's Composer if it is ≥ 2.7, otherwise downloads the official `composer.phar` into `.tools\` (SHA-256 checked). If Node.js ≥ 20.9 is missing, it installs the official Node 22 LTS zip into `C:\laragon\bin\nodejs` (SHA-256 checked). If PostgreSQL is missing, it installs the official EDB PostgreSQL 16 binaries into `C:\laragon\bin\postgresql` (Authenticode signatures checked) and initialises this project's own instance in `C:\laragon\data\postgresql-16`, listening on localhost only. **Credentials are generated randomly**: the `postgres` superuser password is stored in `C:\laragon\data\postgresql-16-superuser.secret` (readable by your Windows user only) and the `amanet` role's password only in `backend\.env`. Then it creates the `amanet` and `amanet_test` databases, runs `composer install`, creates `.env` and the app key, runs `migrate --seed`, `npm ci` and installs Playwright's Chromium. It is safe to run again. |
-| `verify-windows.bat` | Runs the full Phase 1 verification: PHPUnit, Pint, ESLint, TypeScript, production build and Playwright end-to-end tests |
+| `setup-windows.bat` | Picks Laragon's newest PHP ≥ 8.2 and enables `pdo_pgsql`/`pgsql` in its `php.ini` (backup kept as `php.ini.lexora-backup`). Uses Laragon's Composer if it is ≥ 2.7, otherwise downloads the official `composer.phar` into `.tools\` (SHA-256 checked). If Node.js ≥ 20.9 is missing, it installs the official Node 22 LTS zip into `C:\laragon\bin\nodejs` (SHA-256 checked). If PostgreSQL is missing, it installs the official EDB PostgreSQL 16 binaries into `C:\laragon\bin\postgresql` (Authenticode signatures checked) and initialises this project's own instance in `C:\laragon\data\postgresql-16`, listening on localhost only. **Credentials are generated randomly**: the `postgres` superuser password is stored in `C:\laragon\data\postgresql-16-superuser.secret` (readable by your Windows user only) and the `amanet` role's password only in `backend\.env`. Then it creates the `amanet` (development), `amanet_test` (PHPUnit) and `amanet_e2e` (Playwright, reset on every run) databases, runs `composer install`, creates `.env` and the app key, runs `migrate --seed`, `npm ci` and installs Playwright's Chromium. It is safe to run again. |
+| `verify-windows.bat` | Runs the full verification: PHPUnit, Pint, ESLint, TypeScript, production build and the Playwright end-to-end suite (on its own servers and the disposable `amanet_e2e` database — your development data is never modified) |
 | `start-windows.bat` | Starts PostgreSQL, the API and the web app (servers already running are reused, never duplicated), waits until both respond, then opens the browser |
 
 **Ports.** Defaults are API `8000`, web `3000`, PostgreSQL `5432`. If another program already owns one of them
@@ -162,13 +163,18 @@ cd backend && ./vendor/bin/pint --test
 # Frontend static checks and production build
 cd frontend && npm run lint && npm run typecheck && npm run build
 
-# End-to-end (real Next.js → Laravel → PostgreSQL). Starts both servers if they are not running
-# and runs the (idempotent) seeder first.
+# End-to-end (real Next.js → Laravel → PostgreSQL), fully isolated from your development data:
+# Playwright starts its OWN API (:8011) and web server (:3011, build dir .next-e2e) against the
+# disposable database amanet_e2e, which global-setup resets with migrate:fresh --seed on every run.
+# Only a database whose name ends in "_e2e" is ever reset. Override ports with E2E_API_PORT / E2E_WEB_PORT.
 cd frontend && npx playwright install chromium   # first time only
 cd frontend && npm run test:e2e
 ```
 
-Latest verified results are recorded in the [Phase 1 report](docs/PHASE_1_IMPLEMENTATION_REPORT.md#6-functional-verification).
+Create the E2E database once (`setup-windows.bat` does it): `CREATE DATABASE amanet_e2e OWNER amanet;`
+
+Latest verified results: [Phase 2 report](docs/PHASE_2_IMPLEMENTATION_REPORT.md#12-testing-results) (and the
+[Phase 1 report](docs/PHASE_1_IMPLEMENTATION_REPORT.md#6-functional-verification)).
 
 ## Troubleshooting
 
@@ -182,13 +188,16 @@ Latest verified results are recorded in the [Phase 1 report](docs/PHASE_1_IMPLEM
 | Dashboard shows "We couldn't reach the server" | The API is not running on `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). |
 | Backend tests fail to connect | Ensure the `amanet_test` database exists (created automatically by Docker on first start). |
 
-## Known limitations (Phase 1)
+| Saving returns **409** | Someone (or another tab) changed the record after you opened it, or the matter is archived. Reload; restore archived matters before editing. |
 
-- Matters and clients are **read-only**; create/edit/archive arrive in Phase 2. Rows are not yet clickable (no detail pages).
+## Known limitations (Phase 2)
+
+- The matter form's client picker and the matters client filter list the first 100 clients alphabetically (search-as-you-type picker planned).
+- Archived matters are shown in the default (unfiltered) matters list, as in Phase 1; use the status filter to narrow.
 - Documents, client requests, signing, email and notifications are **designed and documented but not implemented**.
 - The "Coming soon" navigation items are intentionally disabled.
 - One role (`admin`) exists; the `admin` middleware and policies are in place for future roles.
 - Production deployment (HTTPS, secure cookies, queue workers) is configured through environment variables but not exercised.
 - `npm audit` reports moderate advisories in ESLint's transitive `minimatch` dependency (dev tooling only).
 
-See [`docs/PHASE_1_IMPLEMENTATION_REPORT.md`](docs/PHASE_1_IMPLEMENTATION_REPORT.md) for the full list.
+See the [Phase 2 report](docs/PHASE_2_IMPLEMENTATION_REPORT.md) and the [Phase 1 report](docs/PHASE_1_IMPLEMENTATION_REPORT.md) for the full list.

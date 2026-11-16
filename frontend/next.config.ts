@@ -28,6 +28,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // The isolated E2E server (playwright.config.ts) builds into its own directory so it can run next
+  // to the developer's `next dev`.
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
   cacheComponents: true,
   partialPrefetching: true,
   poweredByHeader: false,

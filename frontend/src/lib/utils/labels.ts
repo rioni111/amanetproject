@@ -1,4 +1,10 @@
-import type { ClientType, MatterStatus, Priority } from "@/types/api";
+import type { ClientType, MatterStatus, Priority, TaskStatus } from "@/types/api";
+
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  todo: "To do",
+  in_progress: "In progress",
+  completed: "Completed",
+};
 
 export const MATTER_STATUS_LABELS: Record<MatterStatus, string> = {
   open: "Open",

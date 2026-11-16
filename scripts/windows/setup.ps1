@@ -249,7 +249,8 @@ ALTER ROLE amanet WITH LOGIN CREATEDB NOSUPERUSER PASSWORD '$appDbPassword';
 "@
     Invoke-PsqlSecret $psql $roleSql
     Add-Result 'Role amanet (random password, synced with backend\.env)' 'PASS'
-    foreach ($db in @('amanet', 'amanet_test')) {
+    # amanet: development data (never reset) · amanet_test: PHPUnit · amanet_e2e: Playwright (reset on every run)
+    foreach ($db in @('amanet', 'amanet_test', 'amanet_e2e')) {
         $exists = (& $psql -h localhost -p $PgPort -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$db'") 2>$null
         if ("$exists".Trim() -ne '1') {
             Invoke-Native "Create database $db" $Root { & $psql -h localhost -p $PgPort -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db OWNER amanet ENCODING 'UTF8'" } | Out-Null
@@ -257,7 +258,7 @@ ALTER ROLE amanet WITH LOGIN CREATEDB NOSUPERUSER PASSWORD '$appDbPassword';
     }
     if (-not $hadPgPassword) { Remove-Item Env:\PGPASSWORD }
     if (-not $hadPgUser) { Remove-Item Env:\PGUSER }
-    Add-Result 'PostgreSQL 16 running with amanet + amanet_test' 'PASS'
+    Add-Result 'PostgreSQL 16 running with amanet, amanet_test, amanet_e2e' 'PASS'
 
     # ------------------------------------------------------------ 5. Backend
     Invoke-Native 'composer install' $Backend { & $php $composerPhar install --no-interaction --prefer-dist --no-ansi --no-progress } | Out-Null
@@ -281,6 +282,10 @@ ALTER ROLE amanet WITH LOGIN CREATEDB NOSUPERUSER PASSWORD '$appDbPassword';
     Set-DotEnvValue $envFile 'APP_URL' $ApiUrl
     Set-DotEnvValue $envFile 'FRONTEND_URL' $WebUrl
     Set-DotEnvValue $envFile 'SANCTUM_STATEFUL_DOMAINS' "localhost:$WebPort,127.0.0.1:$WebPort"
+    # Browsers share cookies between ports of the same host. A port-specific session cookie name keeps
+    # this app's session separate from other local apps (e.g. another copy of Lexora on :3000).
+    $sessionCookie = if ($WebPort -eq 3000) { 'lexora_session' } else { "lexora_session_$WebPort" }
+    Set-DotEnvValue $envFile 'SESSION_COOKIE' $sessionCookie
     Write-Log "API: $ApiUrl   Web app: $WebUrl (recorded in backend\.env)" 'Green'
     Add-Result "Application ports API $ApiPort / web $WebPort" 'PASS'
 
@@ -298,6 +303,7 @@ ALTER ROLE amanet WITH LOGIN CREATEDB NOSUPERUSER PASSWORD '$appDbPassword';
         Write-Log 'Created frontend\.env.local from .env.example'
     }
     Set-DotEnvValue (Join-Path $Frontend '.env.local') 'NEXT_PUBLIC_API_URL' $ApiUrl
+    Set-DotEnvValue (Join-Path $Frontend '.env.local') 'NEXT_PUBLIC_SESSION_COOKIE' (Get-DotEnvValue $envFile 'SESSION_COOKIE')
     if (-not $SkipPlaywright) {
         Invoke-Native 'Playwright Chromium' $Frontend { & $npx playwright install chromium } | Out-Null
     }

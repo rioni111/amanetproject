@@ -12,6 +12,12 @@ return [
         'upcoming_deadlines_limit' => 6,
     ],
 
+    /*
+     | The firm's time zone. Date-only legal values (deadlines, opening dates) are calendar dates in
+     | this zone; a deadline is the end of that day. Timestamps are always stored in UTC.
+     */
+    'timezone' => env('LEXORA_TIMEZONE', 'UTC'),
+
     'pagination' => [
         'default_per_page' => 15,
         'max_per_page' => 100,

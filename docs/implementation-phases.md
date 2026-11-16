@@ -5,7 +5,7 @@ Seven-day delivery plan. ✅ = implemented and verified · 🟡 = foundation onl
 | # | Phase | Status |
 | --- | --- | --- |
 | 1 | Foundation, Architecture, Database, Authentication & UI | ✅ Complete |
-| 2 | Matter, Client, Task & Notes Management | ⬜ Planned |
+| 2 | Matter, Client, Task & Notes Management | ✅ Complete ([report](PHASE_2_IMPLEMENTATION_REPORT.md)) |
 | 3 | Document Management & Version Control | ⬜ Planned |
 | 4 | Secure Client Document Requests & Review | ⬜ Planned |
 | 5 | Electronic Document Signing | ⬜ Planned |
@@ -23,12 +23,16 @@ Seven-day delivery plan. ✅ = implemented and verified · 🟡 = foundation onl
 - ✅ PHPUnit, Playwright, lint, typecheck and build passing; documentation
 - 🟡 `ActivityLogger`, `ConfirmDialog`, `FormField`, `PaginatedCollection` are ready for Phase 2 usage
 
-## 2. Matter, Client, Task & Notes Management — ⬜
+## 2. Matter, Client, Task & Notes Management — ✅
 
-- Create/update clients; create/update/close/archive matters (matter number generator); status transition rules
-- Matter detail page: overview, tasks (create/complete), internal notes, activity timeline
-- Every change wrapped in a transaction and recorded through `ActivityLogger`
-- Global search across matters, clients (documents in Phase 3)
+- ✅ Clients: create, edit, detail page (`/clients/[id]`), retention-safe delete (only without matters)
+- ✅ Matters: create (concurrency-safe `LEX-YYYY-NNNN` numbering), edit, status transitions per documented policy,
+  priority changes, date-only deadlines, archive and restore (to the previous status), read-only archived matters
+- ✅ Matter workspace (`/matters/[id]`): overview, tasks (CRUD, complete/reopen), internal notes (CRUD), activity timeline
+- ✅ Every change and its activity event in one transaction; optimistic concurrency (`lock_version`, 409 on stale edits)
+- ✅ Search/filter/sort extended (client reference, matter type, deadline filter, client filter, created/opened sorts)
+- ✅ 51 new PHPUnit tests (incl. a multi-process numbering race) and 15 new Playwright tests on an isolated E2E database
+- Search across documents follows with documents in Phase 3
 
 ## 3. Document Management & Version Control — ⬜
 

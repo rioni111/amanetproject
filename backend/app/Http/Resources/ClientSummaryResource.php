@@ -20,6 +20,7 @@ class ClientSummaryResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'client_type' => $this->client_type->value,
+            'reference_number' => $this->whenHas('reference_number'),
         ];
     }
 }
