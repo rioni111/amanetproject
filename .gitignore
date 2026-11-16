@@ -1,0 +1,26 @@
+# Operating system / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Secrets — never commit real environment files
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output (each app also has its own .gitignore)
+backend/vendor/
+frontend/node_modules/
+frontend/.next/
+
+# Test artefacts
+frontend/test-results/
+frontend/playwright-report/
+frontend/e2e/.auth/
+backend/.phpunit.cache/
+
+# Delivery archives
+*.tar.gz
+*.zip

@@ -1,0 +1,34 @@
+<?php
+
+namespace App\Http\Requests\Matters;
+
+use App\Enums\MatterStatus;
+use App\Enums\Priority;
+use App\Models\Matter;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+class IndexMattersRequest extends FormRequest
+{
+    public const SORTABLE = ['updated_at', 'opened_at', 'due_at', 'matter_number', 'title', 'priority'];
+
+    public function authorize(): bool
+    {
+        return $this->user()?->can('viewAny', Matter::class) ?? false;
+    }
+
+    /** @return array<string, mixed> */
+    public function rules(): array
+    {
+        return [
+            'search' => ['nullable', 'string', 'max:100'],
+            'status' => ['nullable', Rule::in([...MatterStatus::values(), 'active'])],
+            'priority' => ['nullable', Rule::enum(Priority::class)],
+            'client_id' => ['nullable', 'integer', 'min:1'],
+            'sort' => ['nullable', Rule::in(self::SORTABLE)],
+            'direction' => ['nullable', Rule::in(['asc', 'desc'])],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:'.config('lexora.pagination.max_per_page')],
+            'page' => ['nullable', 'integer', 'min:1'],
+        ];
+    }
+}
