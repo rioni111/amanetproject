@@ -24,3 +24,5 @@ backend/.phpunit.cache/
 # Delivery archives
 *.tar.gz
 *.zip
+verification-logs/
+.tools/

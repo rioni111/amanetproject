@@ -1,8 +1,9 @@
 # Phase 1 Implementation Report — Lexora Workspace (Amanet)
 
 **Phase:** 1 of 7 — Foundation, Architecture, Database, Authentication & Premium UI
-**Report date:** 16 November 2026
-**Status:** ✅ Phase 1 acceptance criteria met. All automated checks listed in §6 were executed and passed.
+**Report date:** 16 November 2026 (updated the same day after the Windows/Laragon setup and verification, see §1c)
+**Status:** ✅ Phase 1 acceptance criteria met. All automated checks listed in §6 were executed and passed — first in the
+Linux build environment and then again **on the target Windows 11 / Laragon machine** (§1c).
 
 This report documents only functionality that exists in the codebase. Planned work is labelled as such.
 
@@ -117,11 +118,156 @@ implementation details).
 | 13 | ESLint scanned the generated Playwright HTML report | Report folder inside `frontend/` | Ignored `playwright-report/**` and `test-results/**` |
 | 14 | Copying into your Windows folder: `tar` could not replace existing files | The connected folder forbids deleting files, and plain `tar` unlinks before writing | Re-extracted with `tar --overwrite` (writes in place); set `core.filemode=false` for the mounted repository; restored three `storage/framework/**/.gitignore` files; `git status` is clean |
 
-### What could not be done on your computer
+### What could not be done on your computer (resolved — see §1c)
 
-The Linux helper shell attached to your folder has **no PHP/Composer** and **cannot reach Packagist** (same network policy), and an
-`npm install` there would produce Linux-only native binaries. So `vendor/` and `node_modules/` were **not** installed in your folder.
-Run `composer install` and `npm install` once in Laragon's terminal on Windows (see README); everything is locked to the verified versions.
+At the time of the Linux build the helper shell attached to your folder had **no PHP/Composer** and could not reach Packagist,
+so `vendor/` and `node_modules/` were not installed. This has since been done directly on the Windows machine with
+`setup-windows.bat`; the complete installation and verification is documented in §1c.
+
+---
+
+## 1c. Windows / Laragon setup and verification (16 November 2026)
+
+Everything in this section was **executed on the target machine** (Windows 11 Pro 10.0.26300, Laragon in `C:\laragon`,
+PowerShell 5.1, standard non-elevated user account) using `setup-windows.bat`, `verify-windows.bat` and `start-windows.bat`.
+Logs are in `verification-logs/` (git-ignored):
+
+| Log | Content |
+| --- | --- |
+| `setup-20261116-161641.log`, `setup-summary.txt` | Final, successful setup run (14/14 steps PASS) |
+| `setup-20261116-160350.log`, `-161009.log`, `-161046.log` | Earlier setup runs that exposed the problems in the table below |
+| `verify-20261116-162204.log` | First verification: 1 E2E failure (application bug, fixed) |
+| `verify-20261116-163053.log`, `verify-summary.txt` | Final verification after the fix: 11/11 steps PASS |
+| `versions.txt` | Toolchain versions recorded by `verify-windows.bat` |
+| `start-and-browser-check-20261116.log` | `start-windows.bat` output, duplicate-start check, manual browser check, secret scan |
+
+### 1. Installation results
+
+| Step (setup-windows.bat) | Result |
+| --- | --- |
+| PHP 8.2+ with `pdo_pgsql`/`pgsql` | ✅ PHP 8.3.35 from Laragon; `extension=pgsql` enabled in its `php.ini` (backup `php.ini.lexora-backup`) |
+| Composer | ✅ 2.11.2 downloaded from getcomposer.org into `.tools\` (SHA-256 verified) — Laragon's bundled 2.4.1 is too old and was left untouched |
+| Node.js | ✅ 22.23.5 LTS from nodejs.org into `C:\laragon\bin\nodejs\` (SHA-256 verified against `SHASUMS256.txt`); Laragon's Node 18 left untouched |
+| PostgreSQL 16 | ✅ 16.16 EDB binaries into `C:\laragon\bin\postgresql\postgresql-16.16` (Authenticode signatures of `postgres`, `pg_ctl`, `initdb`, `psql` valid — EnterpriseDB Corporation); data directory `C:\laragon\data\postgresql-16`, running on **localhost:5433** |
+| Database role / databases | ✅ role `amanet` (LOGIN, CREATEDB, NOSUPERUSER), databases `amanet` and `amanet_test` (UTF-8) |
+| Backend | ✅ `composer install` (115 s), `.env` created, `key:generate`, `migrate --seed` |
+| Frontend | ✅ `npm ci` (133 s), `.env.local` created, Playwright Chromium installed |
+
+**Administrator rights:** verified as *not required*. The session was not elevated; all downloads are zip archives extracted into
+user-writable Laragon folders, PostgreSQL runs as the current user (not a Windows service) on an unprivileged port, and no system
+settings, services, PATH entries or execution policies were changed (`-ExecutionPolicy Bypass` applies only to the launched process).
+
+### 2. Installed dependency versions (Windows)
+
+| Tool / package | Version |
+| --- | --- |
+| PHP / Composer | 8.3.35 / 2.11.2 |
+| Node.js / npm | 22.23.5 / 10.9.9 |
+| PostgreSQL | 16.16 (EDB, Visual C++ build 1944, 64-bit) |
+| Laravel / Sanctum / PHPUnit / Pint | 12.72.0 / 4.4.0 / 11.5.58 / 1.29.3 (as locked) |
+| Next.js / React / TypeScript / ESLint / Tailwind | 16.4.6 / 19.3.0 / 5.9.3 / 9.39.5 / 4.3.3 (as locked) |
+| Playwright / Chromium | 1.63.0 / build 1243 |
+
+### 3. Configuration changes
+
+| Where | Change |
+| --- | --- |
+| `C:\laragon\bin\php\php-8.3.35-Win32-vs16-x64\php.ini` | `extension=pgsql` enabled (`pdo_pgsql` was already on); original kept as `php.ini.lexora-backup` |
+| `C:\laragon\data\postgresql-16\postgresql.conf` | `port = 5433`, `listen_addresses = 'localhost'` |
+| `C:\laragon\data\postgresql-16-superuser.secret` | Randomly generated 32-character password of the `postgres` superuser; ACL restricted to the current user, SYSTEM and Administrators |
+| `backend\.env` (git-ignored) | `DB_PORT=5433`, `DB_PASSWORD` = random 32-character password (replaces the insecure template value), `APP_KEY` generated, `APP_URL=http://localhost:8010`, `FRONTEND_URL=http://localhost:3010`, `SANCTUM_STATEFUL_DOMAINS=localhost:3010,127.0.0.1:3010`, `LEXORA_API_PORT=8010`, `LEXORA_WEB_PORT=3010` |
+| `frontend\.env.local` (git-ignored) | `NEXT_PUBLIC_API_URL=http://localhost:8010` |
+| Scripts | See "Corrections applied" below |
+
+No password, secret or session token appears in this report, the README or any log (11 log files scanned for the generated
+passwords: 0 matches).
+
+### 4. Problems identified
+
+| # | Problem | Root cause |
+| --- | --- | --- |
+| W1 | Script review: insecure database credentials | `setup.ps1` created superuser `postgres`/`postgres` and role `amanet`/`amanet` |
+| W2 | Script review: `start-windows.bat` would start duplicate servers and always reported success | No check for running services; no readiness verification |
+| W3 | `.bat` launchers always exited 0 | `pause` reset `%ERRORLEVEL%` |
+| W4 | Laragon's Composer 2.4.1 (2022) | Too old for a reliable install on PHP 8.3 / current lock files |
+| W5 | Setup reported "PostgreSQL already running" and then could not log in | Ports **5432, 8000 and 3000 are owned by two unrelated applications**: a separate copy of the project in `C:\laragon\www\Amanet\amanet-legal-workspace` (PostgreSQL, `php artisan serve`, `next start` on `::1`) and the Docker stack `seo-intelligence-platform` (`127.0.0.1:5432/8000/3000`). The readiness check only asked "does anything answer on 5432?" |
+| W6 | Setup aborted at the Composer step | Composer 2.11 writes a "PHP version" notice to stderr; PowerShell 5.1 turns redirected stderr into a terminating error under `ErrorActionPreference=Stop` |
+| W7 | Setup hung after "server started" | `pg_ctl … start \| ForEach-Object`: the postmaster inherited the PowerShell pipe handle, so the pipeline never received EOF |
+| W8 | E2E "matters can be searched and filtered against the API" failed (18/19 passed) | **Application bug** in `useUrlFilters`: each update was built from the filters of the last render. `router.replace` is asynchronous; on this machine the status change had not reached the URL before the 300 ms search debounce fired, so the search update wrote the *old* status back — a user's filter choice was silently reverted |
+
+### 5. Corrections applied
+
+| # | Correction |
+| --- | --- |
+| W1 | Random 32-character credentials (`RNGCryptoServiceProvider`, rejection sampling). Superuser password → restricted secret file; app password → `backend\.env` only. SQL containing passwords is sent to `psql` on stdin (never on a command line) and psql errors are redacted before logging. Re-runs re-synchronise the role with `.env`; a server still using the old `postgres/postgres` default is rotated automatically |
+| W2 | `start.ps1` reuses services whose ports are already listening, waits for `/up` and `/login`, prints the status of PostgreSQL/API/web and exits non-zero if a service is not reachable |
+| W3 | Launchers preserve the exit code; `LEXORA_NO_PAUSE=1` skips the final prompt for unattended runs |
+| W4 | Composer ≥ 2.7 required; otherwise the official phar is downloaded into `.tools\` and SHA-256 verified (Laragon's copy untouched) |
+| W5 | The project now always uses **its own** PostgreSQL instance (identified by `pg_ctl status` on its data directory, not by "something answers on the port"). Ports are chosen once and recorded: PostgreSQL in `postgresql.conf` + `DB_PORT`, API/web in `LEXORA_API_PORT`/`LEXORA_WEB_PORT` + the derived `APP_URL`, `FRONTEND_URL`, `SANCTUM_STATEFUL_DOMAINS`, `NEXT_PUBLIC_API_URL`. Defaults stay 5432/8000/3000; when owned by another program the next free port from 5433/8010/3010 is used. With your approval the other applications were **left running and untouched**. `playwright.config.ts` derives the dev-server ports from `NEXT_PUBLIC_API_URL`/`E2E_BASE_URL` (defaults unchanged) |
+| W6 | Composer version probe runs with `ErrorActionPreference=Continue` and parses only the "Composer version" text |
+| W7 | `pg_ctl start` runs through `cmd.exe` with stdin from `NUL` and output to `verification-logs\pg_ctl-start.txt`, which is then copied into the log |
+| W8 | `frontend/src/hooks/use-url-filters.ts`: updates now build on the latest *requested* filters (ref) until the URL has caught up with the last `router.replace`, after which the URL is the source of truth again. Verified with the failing spec repeated 3× (all pass), then the full suite |
+
+### 6. Tests executed on Windows and their results
+
+Final `verify-windows.bat` run (`verify-20261116-163053.log`):
+
+| Check | Result |
+| --- | --- |
+| PHP `pdo_pgsql` loaded | ✅ PASS |
+| `composer validate` | ✅ PASS |
+| `php artisan migrate` on PostgreSQL 16.16 | ✅ PASS (nothing to migrate; 9 migrations applied by setup) |
+| `php artisan db:seed` (idempotency) | ✅ PASS — no duplicates (10 matters, 8 clients, 42 events after several runs) |
+| `php artisan route:list` | ✅ PASS |
+| PHPUnit (`php artisan test`, database `amanet_test`) | ✅ **59 passed (218 assertions)** — auth, sessions, protected routes, dashboard, matters, clients, database integrity, seeder |
+| Pint | ✅ PASS |
+| ESLint | ✅ PASS (0 problems) |
+| TypeScript (`next typegen && tsc --noEmit`) | ✅ PASS |
+| Next.js production build | ✅ PASS |
+| Playwright E2E (desktop 1440×900 + Pixel 7 mobile, real Next.js → Laravel → PostgreSQL) | ✅ **19 passed** |
+
+The first verification run (`verify-20261116-162204.log`) had 18/19 E2E passing; the failure was W8, fixed and re-verified as above.
+
+### 7. Confirmed working features (manual check after `start-windows.bat`)
+
+- `start-windows.bat`: PostgreSQL on localhost:5433, Laravel API healthy at **http://localhost:8010**, Next.js ready at
+  **http://localhost:3010**; a second run reused all three services and started no duplicates.
+- Administrator login with the demo account → dashboard; logout → login page; `/dashboard` afterwards redirects to
+  `/login?next=%2Fdashboard`; nothing stored in localStorage/sessionStorage.
+- Dashboard figures (7 of 10 matters active, 8 clients, 4 deadlines in 14 days with 1 overdue, 11 open tasks with 1 past due,
+  pipeline 3/3/1/2/1) **match a direct SQL query** against the `amanet` database.
+- Navigation Dashboard → Matters (10 matters) → Clients (8 clients) via the mobile drawer; desktop navigation is covered by E2E.
+- No Laravel errors (`storage/logs/laravel.log` not created). Browser console: only the expected guest 401 on `/api/auth/me`
+  before login, React dev-mode aborted duplicate fetches, and a dev-only HMR WebSocket error specific to the desktop app's embedded
+  browser (a direct WebSocket probe to the same URL succeeds; Playwright's Chromium is unaffected).
+
+### 8. Remaining limitations
+
+- **Ports differ from the brief** on this machine: API `8010`, web `3010`, PostgreSQL `5433`, because 8000/3000/5432 belong to
+  other applications. Stopping those and deleting `LEXORA_API_PORT`/`LEXORA_WEB_PORT` from `backend\.env` before re-running
+  `setup-windows.bat` restores 8000/3000 (the PostgreSQL port lives in `postgresql.conf`).
+- **Cookie sharing between the two project copies:** browsers do not separate cookies by port, and both copies use the cookie
+  names `lexora_session` and `XSRF-TOKEN` on `localhost`. Signing in to both copies in the same browser profile can sign you out of
+  the other. Use one copy at a time or a separate browser profile; automated tests use isolated contexts and are unaffected.
+- PostgreSQL is not a Windows service: after a reboot `start-windows.bat` (or `verify-windows.bat`) starts it again.
+- `start-windows.bat` runs the Next.js **development** server (as before); `npm run build && npm run start` is the production mode.
+- `npm audit` dev-tooling advisories and the CSP `'unsafe-inline'` limitation from §7 are unchanged.
+
+### 9. Application startup instructions (Windows)
+
+1. Double-click `start-windows.bat` (or run it from a terminal). It starts PostgreSQL if needed and opens two server windows.
+2. Open **http://localhost:3010** (not `localhost:3000`, which on this machine belongs to another application). The demo
+   administrator is shown on the login page (development only; values in `backend/.env.example`).
+3. Stop the app by closing the two server windows. To stop PostgreSQL:
+   `C:\laragon\bin\postgresql\postgresql-16.16\bin\pg_ctl.exe stop -D C:\laragon\data\postgresql-16`.
+4. Re-run the checks at any time with `verify-windows.bat` (≈ 3 minutes); results in `verification-logs\verify-summary.txt`.
+
+### 10. Final readiness assessment for Phase 2
+
+**Ready for Phase 2.** On the target Windows/Laragon machine all dependencies are installed, database connectivity is verified, Laravel
+and Next.js start correctly, the full automated suite passes (59 PHPUnit, 19 Playwright, lint, types, build), and admin login/logout,
+dashboard, matters and clients were confirmed manually against PostgreSQL data. The one application defect found on Windows (W8)
+is fixed and covered by the existing E2E test. Phase 2 work has not been started.
 
 ---
 
@@ -310,7 +456,8 @@ and the seeded values · stat card links to a filtered list · API 500 → error
 
 ### Remaining bugs
 
-None known in Phase 1 scope.
+None known in Phase 1 scope. (A filter race in `useUrlFilters` that only surfaced on the slower Windows dev server was found and
+fixed on 16 November 2026 — see §1c, W8.)
 
 ---
 
@@ -380,9 +527,8 @@ workspace; requirements were taken from the brief's project context).
 
 ## 9. Remaining work & Phase 2 preparation
 
-**Readiness assessment: ready for Phase 2.** All Phase 1 acceptance checks pass. The only open item is that you need to run
-`composer install`, `npm install`, `migrate --seed` and both servers on your own machine (see §1b, "What could not be done on your
-computer").
+**Readiness assessment: ready for Phase 2.** All Phase 1 acceptance checks pass, in the Linux build environment and on the target
+Windows/Laragon machine (§1c). The earlier open item — installing and running the project on your own machine — is done.
 
 ### Ready to build on without refactoring
 
@@ -448,6 +594,7 @@ computer").
 - [x] Lint passes
 - [x] Production build passes
 - [x] End-to-end tests pass (19/19, dev and production builds)
+- [x] Windows/Laragon: setup, full verification (59/59 PHPUnit, 19/19 E2E) and startup executed on the target machine (§1c)
 - [x] README with setup and demo instructions
 - [x] Known limitations documented
 

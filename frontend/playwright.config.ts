@@ -7,6 +7,9 @@ import { defineConfig, devices } from "@playwright/test";
  */
 const FRONTEND_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// The dev servers listen on the ports of the URLs above (8000 / 3000 unless overridden).
+const API_PORT = new URL(API_URL).port || "8000";
+const FRONTEND_PORT = new URL(FRONTEND_URL).port || "3000";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -38,14 +41,14 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "php artisan serve --host=localhost --port=8000",
+      command: `php artisan serve --host=localhost --port=${API_PORT}`,
       cwd: "../backend",
       url: `${API_URL}/up`,
       reuseExistingServer: true,
       timeout: 60_000,
     },
     {
-      command: "npm run dev",
+      command: `npm run dev -- --port ${FRONTEND_PORT}`,
       url: `${FRONTEND_URL}/login`,
       reuseExistingServer: true,
       timeout: 120_000,

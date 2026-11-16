@@ -61,13 +61,37 @@ API conventions: [`docs/api-conventions.md`](docs/api-conventions.md)
 
 ## Setup
 
+### Windows / Laragon (one click)
+
+Three launchers in the project root automate everything on Windows (PowerShell 5.1+, no admin rights needed):
+
+| Launcher | What it does |
+| --- | --- |
+| `setup-windows.bat` | Picks Laragon's newest PHP ≥ 8.2 and enables `pdo_pgsql`/`pgsql` in its `php.ini` (backup kept as `php.ini.lexora-backup`). Uses Laragon's Composer if it is ≥ 2.7, otherwise downloads the official `composer.phar` into `.tools\` (SHA-256 checked). If Node.js ≥ 20.9 is missing, it installs the official Node 22 LTS zip into `C:\laragon\bin\nodejs` (SHA-256 checked). If PostgreSQL is missing, it installs the official EDB PostgreSQL 16 binaries into `C:\laragon\bin\postgresql` (Authenticode signatures checked) and initialises this project's own instance in `C:\laragon\data\postgresql-16`, listening on localhost only. **Credentials are generated randomly**: the `postgres` superuser password is stored in `C:\laragon\data\postgresql-16-superuser.secret` (readable by your Windows user only) and the `amanet` role's password only in `backend\.env`. Then it creates the `amanet` and `amanet_test` databases, runs `composer install`, creates `.env` and the app key, runs `migrate --seed`, `npm ci` and installs Playwright's Chromium. It is safe to run again. |
+| `verify-windows.bat` | Runs the full Phase 1 verification: PHPUnit, Pint, ESLint, TypeScript, production build and Playwright end-to-end tests |
+| `start-windows.bat` | Starts PostgreSQL, the API and the web app (servers already running are reused, never duplicated), waits until both respond, then opens the browser |
+
+**Ports.** Defaults are API `8000`, web `3000`, PostgreSQL `5432`. If another program already owns one of them
+(e.g. a Docker stack or another project), setup leaves it alone and picks the next free port — API from `8010`,
+web from `3010`, PostgreSQL from `5433` — and records the choice in `backend\.env` (`LEXORA_API_PORT`,
+`LEXORA_WEB_PORT`, `DB_PORT`, `APP_URL`, `FRONTEND_URL`, `SANCTUM_STATEFUL_DOMAINS`) and
+`frontend\.env.local` (`NEXT_PUBLIC_API_URL`). The PostgreSQL port is also stored in the data directory's
+`postgresql.conf`. `setup-windows.bat` prints the URLs to open. Environment variables `LEXORA_API_PORT`,
+`LEXORA_WEB_PORT` and `LEXORA_PG_PORT` override the choice.
+
+Logs are written to `verification-logs\` (`*-summary.txt` has the PASS/FAIL list). To run the launchers without the
+final "Press any key" prompt (e.g. from a terminal or CI), set `LEXORA_NO_PAUSE=1`.
+
+### Manual setup (any OS)
+
 ### 1. Start PostgreSQL and Mailpit
 
 ```bash
 docker compose up -d
 ```
 
-This creates the `amanet` database (user `amanet` / password `amanet`) and the `amanet_test` database used by the test suite.
+This creates the `amanet` database (user `amanet` / password `amanet` — a **local Docker development default only**;
+never reuse it elsewhere) and the `amanet_test` database used by the test suite.
 
 <details>
 <summary>Without Docker</summary>
