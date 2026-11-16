@@ -40,6 +40,91 @@ CRUD for matters/clients/tasks/notes, detail pages, documents, secure links, cli
 
 ---
 
+## 1a. Environment, tools and dependencies
+
+### Build & verification environment
+
+Phase 1 was built and verified in an isolated Linux cloud workspace (Ubuntu 24.04) and then copied to
+`C:\laragon\www\Amanets Project\amanet-legal-workspace`.
+
+| Tool | Version | How it was obtained / notes |
+| --- | --- | --- |
+| PHP (CLI) | 8.3.6 | pre-installed; extensions `pdo_pgsql`, `pgsql`, `mbstring`, `intl`, `sodium`, `zip`… present |
+| Composer | 2.8.12 | pre-installed |
+| PostgreSQL | 16.15 | pre-installed server, started with `service postgresql start`; role `amanet`, databases `amanet` and `amanet_test` |
+| Node.js / npm | 22.23.4 / 10.9.9 | pre-installed |
+| Docker Compose | v5.7.0 (client) | client only — **no Docker daemon** in the workspace, so `docker-compose.yml` was validated with `docker compose config` but containers were not started |
+| Chromium for Playwright | build 1243 | pre-installed; `@playwright/test` pinned to **1.63.0** to match it |
+| Git | system | repository initialised on `main`, one commit for Phase 1 |
+
+Project target: **PHP ≥ 8.2** (`config.platform.php = 8.2.0` in `composer.json`, so the lock file installs on Laragon's PHP 8.2+),
+**Node ≥ 20.9**, **PostgreSQL 16**.
+
+### Backend packages (Composer, locked in `backend/composer.lock`)
+
+| Package | Version | Purpose |
+| --- | --- | --- |
+| laravel/framework | 12.72.0 | framework |
+| laravel/sanctum | 4.4.0 | SPA session authentication |
+| laravel/tinker | 2.11.1 | REPL (skeleton default) |
+| phpunit/phpunit | 11.5.58 | tests (dev) — PHPUnit chosen over Pest to keep the dependency tree small |
+| fakerphp/faker | 1.24.1 | factories (dev) |
+| mockery/mockery | 1.6.15 | test doubles (dev) |
+| nunomaduro/collision | 8.9.6 | test output (dev) |
+| laravel/pint | 1.29.3 | code style (dev) |
+
+110 packages in total (78 runtime, 32 dev). Laravel's Sail and Pail were removed from the skeleton as unnecessary.
+
+### Frontend packages (npm, locked in `frontend/package-lock.json`)
+
+| Package | Version | Purpose |
+| --- | --- | --- |
+| next / react / react-dom | 16.4.6 / 19.3.0 / 19.3.0 | framework (App Router, Cache Components enabled) |
+| typescript | 5.9.3 | strict type checking |
+| tailwindcss / @tailwindcss/turbopack | 4.3.3 | styling |
+| @radix-ui/react-dialog, -alert-dialog, -label, -slot | 1.3.1 / 1.2.1 / 2.1.17 / 1.5.0 | accessible primitives behind the shadcn/ui-style components |
+| class-variance-authority, clsx, tailwind-merge | 0.7.1, 2.1.1, 3.7.0 | shadcn/ui variant utilities |
+| lucide-react | 1.73.0 | icons |
+| react-hook-form, zod, @hookform/resolvers | 7.92.0, 4.6.7, 7.0.6 | forms and validation |
+| @tanstack/react-query | 5.107.1 | server state |
+| geist | 1.9.2 | Geist Sans/Mono/Serif fonts bundled locally (no Google Fonts request) |
+| @playwright/test | 1.63.0 | E2E (dev) |
+| eslint / eslint-config-next | 9.39.5 / 16.4.6 | lint (dev) |
+| prettier | 3.10.1 | formatting (dev) |
+
+### Coding-agent skills
+
+No third-party skills were installed. None were required: the work used the standard toolchain above plus the Next.js 16 documentation
+bundled in `node_modules/next/dist/docs` (Next 16 renamed `middleware` to `proxy` and introduced Cache Components, which changed several
+implementation details).
+
+## 1b. Problems encountered and how they were resolved
+
+| # | Problem | Root cause | Resolution |
+| --- | --- | --- | --- |
+| 1 | `composer create-project` failed: `CONNECT tunnel failed, response 403` for `repo.packagist.org` | The workspace's network policy blocks Packagist (also `getcomposer.org`); GitHub API downloads were blocked too, but `git` over HTTPS and `raw.githubusercontent.com` were allowed | Cloned the official `laravel/laravel` v12 skeleton with git. Built a **local Composer repository** from GitHub (tags via `git ls-remote`, `composer.json` via raw.githubusercontent) and let Composer resolve against it. Each locked package was then shallow-fetched at its exact commit and installed. The committed `composer.lock` has the **standard GitHub dist/source URLs**, so `composer install` on a normal machine works as usual. No security checks were bypassed. |
+| 2 | First `composer update` with git sources timed out and used 7.4 GB | Composer mirrors full git histories (e.g. `laravel/framework`) | Deleted the cache; switched to shallow fetch-by-commit + local zips (approx. 27 MB) |
+| 3 | `shadcn` CLI registry (`ui.shadcn.com`) unreachable | Same network policy | Wrote the shadcn/ui components (Button, Card, Badge, Table, Sheet, AlertDialog…) directly from their Radix + CVA patterns and customised them to the Lexora design tokens |
+| 4 | Docker daemon unavailable | Workspace provides the Docker client only | Ran the bundled native PostgreSQL 16 instead; `docker-compose.yml` validated with `docker compose config` |
+| 5 | Installed Playwright 1.65 could not use the pre-installed browser | Browser build is tied to the Playwright version | Pinned `@playwright/test@1.63.0`. On your machine run `npx playwright install chromium` once |
+| 6 | `LayoutProps` type not found in `tsc` | Next 16 generates route types | `typecheck` script runs `next typegen && tsc --noEmit` |
+| 7 | ESLint `react-hooks/set-state-in-effect` on the greeting clock | React 19 lint rule | Replaced with a `useSyncExternalStore`-based `useNow()` hook (also avoids hydration mismatches) |
+| 8 | Dev overlay errors "Could not validate … instant navigation" | Cache Components validation; protected pages intentionally wait for the client-side session check | `export const instant = false` on the protected layout and pages |
+| 9 | Mobile dashboard laid out at 472 px on a 390 px phone | Grid items' min-content width (truncated text) | Explicit `grid-cols-1`; E2E test asserts no horizontal overflow |
+| 10 | Production build: login inputs "not visible" to tests; duplicate `#email` | `useSearchParams` inside `Suspense` under Cache Components left a hidden streamed copy of the form, so the label pointed to the hidden input | Read `next` from `window.location` inside the redirect effect; no Suspense needed. Verified: one form in the DOM, E2E passes against `next start` |
+| 11 | E2E: `getByRole('alert')` matched two elements | Next.js's route announcer also has `role="alert"` | Tests filter by text |
+| 12 | E2E: first Tab focused the Next dev-tools button in `next dev` | Dev-only overlay | Test allows one extra Tab; passes on both dev and production |
+| 13 | ESLint scanned the generated Playwright HTML report | Report folder inside `frontend/` | Ignored `playwright-report/**` and `test-results/**` |
+| 14 | Copying into your Windows folder: `tar` could not replace existing files | The connected folder forbids deleting files, and plain `tar` unlinks before writing | Re-extracted with `tar --overwrite` (writes in place); set `core.filemode=false` for the mounted repository; restored three `storage/framework/**/.gitignore` files; `git status` is clean |
+
+### What could not be done on your computer
+
+The Linux helper shell attached to your folder has **no PHP/Composer** and **cannot reach Packagist** (same network policy), and an
+`npm install` there would produce Linux-only native binaries. So `vendor/` and `node_modules/` were **not** installed in your folder.
+Run `composer install` and `npm install` once in Laragon's terminal on Windows (see README); everything is locked to the verified versions.
+
+---
+
 ## 2. Project structure
 
 ```
@@ -294,6 +379,10 @@ workspace; requirements were taken from the brief's project context).
 ---
 
 ## 9. Remaining work & Phase 2 preparation
+
+**Readiness assessment: ready for Phase 2.** All Phase 1 acceptance checks pass. The only open item is that you need to run
+`composer install`, `npm install`, `migrate --seed` and both servers on your own machine (see §1b, "What could not be done on your
+computer").
 
 ### Ready to build on without refactoring
 
