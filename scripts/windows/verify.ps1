@@ -55,7 +55,7 @@ try {
     if (-not $SkipE2E) {
         # Playwright starts dedicated E2E servers (see above) and resets amanet_e2e in global-setup.
         $env:CI = ''
-        Invoke-Native 'Playwright E2E (Phase 1 + Phase 2 workflows, desktop + mobile)' $Frontend { & $npx playwright test --reporter=list } -AllowFailure | Out-Null
+        Invoke-Native 'Playwright E2E (Phase 1-3 workflows, desktop + mobile)' $Frontend { & $npx playwright test --reporter=list } -AllowFailure | Out-Null
     }
 } catch {
     Add-Result 'Verification aborted' 'FAIL' $_.Exception.Message
