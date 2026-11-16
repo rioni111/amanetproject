@@ -10,12 +10,50 @@ const shortDateFormatter = new Intl.DateTimeFormat("en-GB", { day: "numeric", mo
 const longDateFormatter = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 const monthFormatter = new Intl.DateTimeFormat("en-GB", { month: "short" });
 
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Parses an API value. Calendar dates ("2026-11-30", e.g. deadlines) become local midnight of that
+ * day — never shifted by time zones; ISO timestamps are parsed as instants.
+ */
+export function toDate(value: string): Date {
+  const match = DATE_ONLY.exec(value);
+  return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : new Date(value);
+}
+
+export function isDateOnly(value: string): boolean {
+  return DATE_ONLY.test(value);
+}
+
+/** Today's calendar date in the viewer's time zone, as YYYY-MM-DD (for date inputs). */
+export function todayIsoDate(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
 export function formatDate(iso: string | null | undefined): string {
-  return iso ? dateFormatter.format(new Date(iso)) : "—";
+  return iso ? dateFormatter.format(toDate(iso)) : "—";
 }
 
 export function formatShortDate(iso: string): string {
-  return shortDateFormatter.format(new Date(iso));
+  return shortDateFormatter.format(toDate(iso));
+}
+
+const dateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const timeFormatter = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+export function formatDateTime(iso: string | null | undefined): string {
+  return iso ? dateTimeFormatter.format(new Date(iso)) : "—";
+}
+
+export function formatTime(iso: string): string {
+  return timeFormatter.format(new Date(iso));
 }
 
 export function formatLongDate(date: Date): string {
@@ -23,11 +61,11 @@ export function formatLongDate(date: Date): string {
 }
 
 export function formatMonth(iso: string): string {
-  return monthFormatter.format(new Date(iso));
+  return monthFormatter.format(toDate(iso));
 }
 
 export function formatDay(iso: string): string {
-  return String(new Date(iso).getDate());
+  return String(toDate(iso).getDate());
 }
 
 function startOfDay(date: Date): number {
@@ -36,7 +74,7 @@ function startOfDay(date: Date): number {
 
 /** Whole calendar days from today to the given date (negative = past). */
 export function daysUntil(iso: string, now: Date = new Date()): number {
-  return Math.round((startOfDay(new Date(iso)) - startOfDay(now)) / DAY_MS);
+  return Math.round((startOfDay(toDate(iso)) - startOfDay(now)) / DAY_MS);
 }
 
 export function relativeDays(iso: string, now: Date = new Date()): string {
@@ -52,7 +90,8 @@ export type DeadlineUrgency = "overdue" | "imminent" | "soon" | "later" | "none"
 export function deadlineUrgency(iso: string | null, isActive = true, now: Date = new Date()): DeadlineUrgency {
   if (!iso || !isActive) return "none";
   const days = daysUntil(iso, now);
-  if (new Date(iso).getTime() < now.getTime()) return "overdue";
+  // A calendar-date deadline is overdue once the whole day has passed.
+  if (isDateOnly(iso) ? days < 0 : new Date(iso).getTime() < now.getTime()) return "overdue";
   if (days <= 3) return "imminent";
   if (days <= 7) return "soon";
   return "later";

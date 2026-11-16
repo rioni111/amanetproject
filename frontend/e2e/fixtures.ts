@@ -1,7 +1,9 @@
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-export const FRONTEND_ORIGIN = process.env.E2E_BASE_URL ?? "http://localhost:3000";
+import { API_URL, FRONTEND_URL, SESSION_COOKIE } from "./env";
+
+export { API_URL, SESSION_COOKIE };
+export const FRONTEND_ORIGIN = FRONTEND_URL;
 export const DEMO_EMAIL = process.env.E2E_ADMIN_EMAIL ?? "admin@lexora.test";
 export const DEMO_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "Lexora!Demo2026";
 export const STORAGE_STATE = "e2e/.auth/admin.json";

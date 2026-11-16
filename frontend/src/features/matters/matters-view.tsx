@@ -1,6 +1,7 @@
 "use client";
 
-import { Briefcase, SearchX } from "lucide-react";
+import { Briefcase, Plus, SearchX } from "lucide-react";
+import { useRouter } from "next/navigation";
 import * as React from "react";
 
 import { DataTable } from "@/components/shared/data-table";
@@ -18,28 +19,44 @@ import { cn } from "@/lib/utils/cn";
 import { MATTER_STATUS_LABELS, PRIORITY_LABELS } from "@/lib/utils/labels";
 import { MATTER_STATUSES, PRIORITIES, type MatterStatus, type Priority } from "@/types/api";
 
-import { useMatters, type MatterFilters, type MatterSort } from "./api";
+import { useClientOptions } from "@/features/clients/api";
+
+import { useMatters, type DeadlineFilter, type MatterFilters, type MatterSort } from "./api";
 import { MatterMobileItem, matterColumns } from "./matter-columns";
+import { MatterFormDialog } from "./matter-form-dialog";
 
 const SORT_OPTIONS: { value: MatterSort; label: string }[] = [
   { value: "updated_at", label: "Recently updated" },
+  { value: "created_at", label: "Newest first" },
+  { value: "opened_at", label: "Opening date (newest)" },
   { value: "due_at", label: "Deadline (soonest)" },
   { value: "priority", label: "Priority (highest)" },
   { value: "matter_number", label: "Matter number" },
 ];
 
-const DEFAULTS: MatterFilters = { search: "", status: "", priority: "", sort: "updated_at", page: 1 };
+const DEADLINE_OPTIONS: { value: DeadlineFilter; label: string }[] = [
+  { value: "", label: "Any deadline" },
+  { value: "overdue", label: "Overdue" },
+  { value: "upcoming", label: "Due in the next 14 days" },
+  { value: "none", label: "No deadline" },
+];
+
+const DEFAULTS: MatterFilters = { search: "", status: "", priority: "", deadline: "", client_id: "", sort: "updated_at", page: 1 };
 
 function parseFilters(params: URLSearchParams): MatterFilters {
   const status = params.get("status") ?? "";
   const priority = params.get("priority") ?? "";
   const sort = params.get("sort") ?? "";
+  const deadline = params.get("deadline") ?? "";
+  const clientId = Number.parseInt(params.get("client_id") ?? "", 10);
   const page = Number.parseInt(params.get("page") ?? "1", 10);
 
   return {
     search: (params.get("search") ?? "").slice(0, 100),
     status: status === "active" || (MATTER_STATUSES as readonly string[]).includes(status) ? (status as MatterStatus | "active") : "",
     priority: (PRIORITIES as readonly string[]).includes(priority) ? (priority as Priority) : "",
+    deadline: DEADLINE_OPTIONS.some((option) => option.value === deadline) ? (deadline as DeadlineFilter) : "",
+    client_id: Number.isFinite(clientId) && clientId > 0 ? clientId : "",
     sort: SORT_OPTIONS.some((option) => option.value === sort) ? (sort as MatterSort) : DEFAULTS.sort,
     page: Number.isFinite(page) && page > 0 ? page : 1,
   };
@@ -49,22 +66,52 @@ export function MattersView() {
   const [filters, setFilters] = useUrlFilters(parseFilters, DEFAULTS);
   const { data, isPending, isError, error, refetch, isRefetching, isPlaceholderData } = useMatters(filters);
   const onSearch = React.useCallback((search: string) => setFilters({ search }), [setFilters]);
-  const filtered = Boolean(filters.search || filters.status || filters.priority);
+  const filtered = Boolean(filters.search || filters.status || filters.priority || filters.deadline || filters.client_id);
+  const clientOptions = useClientOptions();
+  const router = useRouter();
+  const [creating, setCreating] = React.useState(false);
+  const clearFilters = () => setFilters({ search: "", status: "", priority: "", deadline: "", client_id: "" });
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Matters" description="Every legal matter across your clients, with status, priority and deadlines." />
+      <PageHeader
+        title="Matters"
+        description="Every legal matter across your clients, with status, priority and deadlines."
+        actions={
+          <Button onClick={() => setCreating(true)}>
+            <Plus aria-hidden />
+            New matter
+          </Button>
+        }
+      />
 
       <Card className="overflow-hidden">
-        <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center">
-          <SearchInput
-            value={filters.search}
-            onChange={onSearch}
-            label="Search matters"
-            placeholder="Search by title, number, type or client…"
-            className="lg:max-w-sm lg:flex-1"
-          />
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:ml-auto lg:flex">
+        <div className="flex flex-col gap-3 border-b border-border p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <SearchInput
+              value={filters.search}
+              onChange={onSearch}
+              label="Search matters"
+              placeholder="Search by title, number, type, client or client reference…"
+              className="sm:flex-1 lg:max-w-md"
+            />
+            <label className="sr-only" htmlFor="sort-matters">
+              Sort by
+            </label>
+            <Select
+              id="sort-matters"
+              value={filters.sort}
+              onChange={(e) => setFilters({ sort: e.target.value as MatterSort })}
+              className="sm:ml-auto sm:w-52"
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <label className="sr-only" htmlFor="filter-status">
               Status
             </label>
@@ -72,7 +119,6 @@ export function MattersView() {
               id="filter-status"
               value={filters.status}
               onChange={(e) => setFilters({ status: e.target.value as MatterFilters["status"] })}
-              className="lg:w-40"
             >
               <option value="">All statuses</option>
               <option value="active">Active (open, in progress, on hold)</option>
@@ -89,7 +135,6 @@ export function MattersView() {
               id="filter-priority"
               value={filters.priority}
               onChange={(e) => setFilters({ priority: e.target.value as MatterFilters["priority"] })}
-              className="lg:w-36"
             >
               <option value="">All priorities</option>
               {PRIORITIES.map((priority) => (
@@ -98,24 +143,37 @@ export function MattersView() {
                 </option>
               ))}
             </Select>
-            <label className="sr-only" htmlFor="sort-matters">
-              Sort by
+            <label className="sr-only" htmlFor="filter-deadline">
+              Deadline
             </label>
             <Select
-              id="sort-matters"
-              value={filters.sort}
-              onChange={(e) => setFilters({ sort: e.target.value as MatterSort })}
-              className="col-span-2 sm:col-span-1 lg:w-44"
+              id="filter-deadline"
+              value={filters.deadline}
+              onChange={(e) => setFilters({ deadline: e.target.value as DeadlineFilter })}
             >
-              {SORT_OPTIONS.map((option) => (
+              {DEADLINE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
             </Select>
+            <label className="sr-only" htmlFor="filter-client">
+              Client
+            </label>
+            <Select
+              id="filter-client"
+              value={String(filters.client_id)}
+              onChange={(e) => setFilters({ client_id: e.target.value ? Number(e.target.value) : "" })}
+            >
+              <option value="">All clients</option>
+              {clientOptions.data?.data.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.name}
+                </option>
+              ))}
+            </Select>
           </div>
         </div>
-
         {isPending ? (
           <TableSkeleton rows={8} columns={6} />
         ) : isError ? (
@@ -127,13 +185,23 @@ export function MattersView() {
               title="No matters match your filters"
               description="Try a different search term or remove a filter."
               action={
-                <Button variant="secondary" size="sm" onClick={() => setFilters({ search: "", status: "", priority: "" })}>
+                <Button variant="secondary" size="sm" onClick={clearFilters}>
                   Clear filters
                 </Button>
               }
             />
           ) : (
-            <EmptyState icon={Briefcase} title="No matters yet" description="Matters will appear here once they are opened." />
+            <EmptyState
+              icon={Briefcase}
+              title="No matters yet"
+              description="Open your first matter to start tracking work and deadlines."
+              action={
+                <Button size="sm" onClick={() => setCreating(true)}>
+                  <Plus aria-hidden />
+                  New matter
+                </Button>
+              }
+            />
           )
         ) : (
           <div className={cn("transition-opacity", isPlaceholderData && "opacity-60")} aria-busy={isPlaceholderData}>
@@ -147,15 +215,19 @@ export function MattersView() {
                 matterColumns.type,
                 matterColumns.status,
                 matterColumns.priority,
+                matterColumns.opened,
                 matterColumns.deadline,
                 matterColumns.openTasks,
+                matterColumns.updated,
+                matterColumns.actions,
               ]}
-              renderMobileItem={(m) => <MatterMobileItem matter={m} />}
+              renderMobileItem={(m) => <MatterMobileItem matter={m} actions />}
             />
             <Pagination meta={data.meta} noun="matters" disabled={isPlaceholderData} onPageChange={(page) => setFilters({ page })} />
           </div>
         )}
       </Card>
+      <MatterFormDialog open={creating} onOpenChange={setCreating} onSaved={(matter) => router.push(`/matters/${matter.id}`)} />
     </div>
   );
 }

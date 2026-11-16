@@ -1,16 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
 
-/**
- * End-to-end tests run against the REAL stack: Next.js (3000) → Laravel (8000) → PostgreSQL.
- * Prerequisites: PostgreSQL running and `php artisan migrate --seed` executed in ../backend.
- * Both dev servers are started automatically unless already running.
- */
-const FRONTEND_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-// The dev servers listen on the ports of the URLs above (8000 / 3000 unless overridden).
-const API_PORT = new URL(API_URL).port || "8000";
-const FRONTEND_PORT = new URL(FRONTEND_URL).port || "3000";
+import { API_URL, E2E_API_PORT, E2E_DATABASE, E2E_WEB_PORT, FRONTEND_URL, SESSION_COOKIE } from "./e2e/env";
 
+/**
+ * End-to-end tests run against the REAL stack: Next.js → Laravel → PostgreSQL — on dedicated ports
+ * and a disposable database (see e2e/env.ts), never against the development servers or data.
+ * Prerequisites: PostgreSQL running and the E2E database created (setup-windows.bat does both).
+ */
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
@@ -19,6 +15,8 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"], ["html", { open: "never" }]],
   globalSetup: "./e2e/global-setup.ts",
+  // Development servers compile routes on demand; allow for that on slower machines.
+  expect: { timeout: 15_000 },
   use: {
     baseURL: FRONTEND_URL,
     trace: "retain-on-failure",
@@ -41,17 +39,32 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `php artisan serve --host=localhost --port=${API_PORT}`,
+      // Process environment overrides backend/.env: same code and credentials, E2E database and origins.
+      command: `php artisan serve --host=localhost --port=${E2E_API_PORT}`,
       cwd: "../backend",
       url: `${API_URL}/up`,
-      reuseExistingServer: true,
+      // Never attach to some other server that happens to listen on this port.
+      reuseExistingServer: false,
       timeout: 60_000,
+      env: {
+        DB_DATABASE: E2E_DATABASE,
+        APP_URL: API_URL,
+        FRONTEND_URL,
+        SANCTUM_STATEFUL_DOMAINS: `localhost:${E2E_WEB_PORT}`,
+        SESSION_COOKIE,
+      },
     },
     {
-      command: `npm run dev -- --port ${FRONTEND_PORT}`,
+      command: `npm run dev -- --port ${E2E_WEB_PORT}`,
       url: `${FRONTEND_URL}/login`,
-      reuseExistingServer: true,
-      timeout: 120_000,
+      reuseExistingServer: false,
+      timeout: 180_000,
+      env: {
+        NEXT_PUBLIC_API_URL: API_URL,
+        NEXT_PUBLIC_SESSION_COOKIE: SESSION_COOKIE,
+        // Separate build directory so it can run next to the developer's own `next dev`.
+        NEXT_DIST_DIR: ".next-e2e",
+      },
     },
   ],
 });

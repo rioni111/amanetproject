@@ -14,7 +14,19 @@ const TONE = {
 } as const;
 
 /** Deadline cell: absolute date + relative hint ("In 3 days", "2 days ago"). */
-export function Deadline({ dueAt, isActive = true, className }: { dueAt: string | null; isActive?: boolean; className?: string }) {
+export function Deadline({
+  dueAt: dueAtTimestamp,
+  dueDate,
+  isActive = true,
+  className,
+}: {
+  dueAt: string | null;
+  /** Calendar date from the API (preferred: never shifted by time zones). */
+  dueDate?: string | null;
+  isActive?: boolean;
+  className?: string;
+}) {
+  const dueAt = dueDate ?? dueAtTimestamp;
   if (!dueAt) return <span className={cn("text-subtle-foreground", className)}>No deadline</span>;
 
   const urgency = deadlineUrgency(dueAt, isActive);

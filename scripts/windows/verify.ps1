@@ -15,10 +15,15 @@ try {
     $php = $tc.Php
     $npm = Join-Path (Split-Path $tc.Node) 'npm.cmd'
     $npx = Join-Path (Split-Path $tc.Node) 'npx.cmd'
-    # Same URLs as backend\.env / frontend\.env.local, for the build and for Playwright's dev servers.
+    # The production build uses the development API URL (same as frontend\.env.local).
     $env:NEXT_PUBLIC_API_URL = $ApiUrl
-    $env:E2E_BASE_URL = $WebUrl
+    # Playwright runs its OWN servers on dedicated ports against the disposable amanet_e2e database
+    # (frontend\e2e\env.ts) - the development servers and data are never used or modified.
+    if (-not $env:E2E_API_PORT) { $env:E2E_API_PORT = "$(Find-FreePort 8011 8099)" }
+    if (-not $env:E2E_WEB_PORT) { $env:E2E_WEB_PORT = "$(Find-FreePort 3011 3099)" }
+    Remove-Item Env:\E2E_BASE_URL -ErrorAction SilentlyContinue
     Write-Log "API: $ApiUrl   Web app: $WebUrl   PostgreSQL: localhost:$PgPort"
+    Write-Log "E2E: API http://localhost:$($env:E2E_API_PORT)   web http://localhost:$($env:E2E_WEB_PORT)   database amanet_e2e (reset each run)"
 
     $versions = @(
         "OS:         " + (Get-CimInstance Win32_OperatingSystem).Caption + " " + (Get-CimInstance Win32_OperatingSystem).Version,
@@ -48,9 +53,9 @@ try {
 
     # ---------------------------------------------------------------- end-to-end
     if (-not $SkipE2E) {
-        # Playwright starts `php artisan serve` ($ApiPort) and `npm run dev` ($WebPort) unless already running.
+        # Playwright starts dedicated E2E servers (see above) and resets amanet_e2e in global-setup.
         $env:CI = ''
-        Invoke-Native 'Playwright E2E (login, logout, dashboard, matters, clients, mobile)' $Frontend { & $npx playwright test --reporter=list } -AllowFailure | Out-Null
+        Invoke-Native 'Playwright E2E (Phase 1 + Phase 2 workflows, desktop + mobile)' $Frontend { & $npx playwright test --reporter=list } -AllowFailure | Out-Null
     }
 } catch {
     Add-Result 'Verification aborted' 'FAIL' $_.Exception.Message

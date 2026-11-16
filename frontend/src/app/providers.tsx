@@ -3,6 +3,7 @@
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
 
+import { ToastProvider } from "@/components/shared/toaster";
 import { currentUserKey } from "@/features/auth/hooks";
 import { ApiError } from "@/lib/api/errors";
 
@@ -45,5 +46,9 @@ function getQueryClient(): QueryClient {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  return <QueryClientProvider client={getQueryClient()}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={getQueryClient()}>
+      <ToastProvider>{children}</ToastProvider>
+    </QueryClientProvider>
+  );
 }
