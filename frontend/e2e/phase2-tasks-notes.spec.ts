@@ -127,7 +127,10 @@ test("an active matter is archived, stays accessible and is restored", async ({ 
   // Restore returns it to In progress.
   await page.getByRole("table", { name: "Matters" }).getByRole("link", { name: matter.title }).click();
   await page.getByRole("button", { name: "Restore" }).click();
-  await page.getByRole("alertdialog", { name: `Restore ${matter.matter_number}?` }).getByRole("button", { name: "Restore matter" }).click();
+  await page
+    .getByRole("alertdialog", { name: `Restore ${matter.matter_number}?` })
+    .getByRole("button", { name: "Restore matter" })
+    .click();
   await expect(page.getByText("Matter restored to In progress")).toBeVisible();
   await expect(page.locator("header").getByText("In progress")).toBeVisible();
   expect((await dashboardStats(page)).active_matters).toBe(before.active_matters);

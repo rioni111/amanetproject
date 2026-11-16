@@ -27,6 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TabPanel, Tabs } from "@/components/ui/tabs";
 import { ActivityTimeline } from "@/features/activity/activity-timeline";
+import { DocumentsPanel } from "@/features/documents/documents-panel";
 import { NotesPanel } from "@/features/notes/notes-panel";
 import { TasksPanel } from "@/features/tasks/tasks-panel";
 import { ApiError } from "@/lib/api/errors";
@@ -38,7 +39,7 @@ import { useMatter } from "./api";
 import { ArchiveRestoreButton, PriorityControl, StatusControl } from "./matter-actions";
 import { MatterFormDialog } from "./matter-form-dialog";
 
-const TABS = ["overview", "tasks", "notes", "activity"] as const;
+const TABS = ["overview", "tasks", "documents", "notes", "activity"] as const;
 type Tab = (typeof TABS)[number];
 
 export function MatterDetailView({ id }: { id: number }) {
@@ -164,6 +165,7 @@ function MatterWorkspace({ matter }: { matter: Matter }) {
         items={[
           { id: "overview", label: "Overview" },
           { id: "tasks", label: "Tasks", count: matter.open_tasks_count ?? 0 },
+          { id: "documents", label: "Documents", count: matter.documents_count ?? 0 },
           { id: "notes", label: "Internal notes", count: matter.notes_count ?? 0 },
           { id: "activity", label: "Activity" },
         ]}
@@ -177,6 +179,11 @@ function MatterWorkspace({ matter }: { matter: Matter }) {
       {tab === "tasks" ? (
         <TabPanel idPrefix="matter" id="tasks">
           <TasksPanel matter={matter} />
+        </TabPanel>
+      ) : null}
+      {tab === "documents" ? (
+        <TabPanel idPrefix="matter" id="documents">
+          <DocumentsPanel matter={matter} />
         </TabPanel>
       ) : null}
       {tab === "notes" ? (

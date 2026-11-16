@@ -96,6 +96,54 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   return (await response.json()) as T;
 }
 
+/**
+ * Authenticated binary GET (PDF preview/download). Same cookie-based session as every other call;
+ * no credentials ever appear in the URL. Errors are normalised to ApiError (JSON error bodies).
+ */
+export async function apiBlob(path: string, signal?: AbortSignal): Promise<Blob> {
+  const response = await send(path, { signal });
+  if (!response.ok) throw await toApiError(response);
+  return await response.blob();
+}
+
+/**
+ * multipart/form-data upload through XMLHttpRequest, because fetch cannot report upload progress.
+ * `onProgress` receives real byte counts from the browser (0–1); nothing is simulated.
+ * CSRF and cookies are handled exactly as in `send()`, including one retry after a 419.
+ */
+export async function apiUpload<T>(path: string, form: FormData, onProgress?: (fraction: number) => void): Promise<T> {
+  const attempt = async (): Promise<{ status: number; body: string; retryAfter: string | null }> => {
+    await ensureCsrfCookie();
+    const token = readCookie("XSRF-TOKEN");
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", buildUrl(path));
+      xhr.withCredentials = true;
+      xhr.setRequestHeader("Accept", "application/json");
+      xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+      if (token) xhr.setRequestHeader("X-XSRF-TOKEN", token);
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && onProgress) onProgress(event.loaded / event.total);
+      };
+      xhr.onload = () => resolve({ status: xhr.status, body: xhr.responseText, retryAfter: xhr.getResponseHeader("Retry-After") });
+      xhr.onerror = () => reject(new ApiError(0, fallbackMessage(0)));
+      xhr.send(form);
+    });
+  };
+
+  let result = await attempt();
+  if (result.status === 419) {
+    await ensureCsrfCookie(true);
+    result = await attempt();
+  }
+  const response = new Response(result.body || null, {
+    status: result.status,
+    headers: { "Content-Type": "application/json", ...(result.retryAfter ? { "Retry-After": result.retryAfter } : {}) },
+  });
+  if (!response.ok) throw await toApiError(response);
+  return (await response.json()) as T;
+}
+
 export const api = {
   get: <T>(path: string, query?: Query, signal?: AbortSignal) => apiRequest<T>(path, { query, signal }),
   post: <T>(path: string, body?: unknown) => apiRequest<T>(path, { method: "POST", body }),

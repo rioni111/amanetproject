@@ -72,6 +72,7 @@ export interface Matter {
   completed_tasks_count?: number;
   tasks_count?: number;
   notes_count?: number;
+  documents_count?: number;
 }
 
 export interface Task {
@@ -113,6 +114,54 @@ export interface ActivityEvent {
   subject_id: number | null;
   metadata: Record<string, unknown>;
   occurred_at: string;
+}
+
+export const DOCUMENT_CATEGORIES = [
+  "contracts",
+  "agreements",
+  "correspondence",
+  "evidence",
+  "court_documents",
+  "identification",
+  "other",
+] as const;
+export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
+export type DocumentStatus = "active" | "archived";
+
+/** One immutable stored PDF. Storage paths are never exposed by the API. */
+export interface DocumentVersion {
+  id: number;
+  document_id: number;
+  version_number: number;
+  label: string;
+  kind: "upload" | "signed";
+  origin: "admin" | "client";
+  original_filename: string;
+  mime_type: string;
+  file_size: number;
+  sha256_checksum: string;
+  uploaded_by: { id: number | null; name: string } | null;
+  is_current?: boolean;
+  created_at: string | null;
+}
+
+export interface LegalDocument {
+  id: number;
+  matter_id: number;
+  title: string;
+  description: string | null;
+  category: DocumentCategory;
+  category_label: string;
+  status: DocumentStatus;
+  origin: "admin" | "client";
+  versions_count: number;
+  current_version?: DocumentVersion;
+  uploaded_by?: { id: number; name: string } | null;
+  matter?: { id: number; matter_number: string; title: string; status: MatterStatus; client: { id: number; name: string } | null };
+  archived_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  lock_version: number;
 }
 
 export interface PaginationMeta {

@@ -68,10 +68,9 @@ export async function createMatter(page: Page, overrides: Record<string, unknown
 }
 
 export async function dashboardStats(page: Page) {
-  const summary = await apiGet<{ data: { stats: { active_matters: number; open_tasks: number; total_clients: number; total_matters: number } } }>(
-    page.request,
-    "/api/dashboard/summary",
-  );
+  const summary = await apiGet<{
+    data: { stats: { active_matters: number; open_tasks: number; total_clients: number; total_matters: number } };
+  }>(page.request, "/api/dashboard/summary");
   return summary.data.stats;
 }
 

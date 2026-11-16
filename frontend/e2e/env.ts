@@ -17,6 +17,8 @@ export const API_URL = `http://localhost:${E2E_API_PORT}`;
 export const FRONTEND_URL = `http://localhost:${E2E_WEB_PORT}`;
 export const E2E_DATABASE = process.env.E2E_DB_DATABASE ?? "amanet_e2e";
 export const SESSION_COOKIE = "lexora_e2e_session";
+/** Private document storage of the E2E API: backend/storage/app/private/<this>, wiped before each run. */
+export const E2E_DOCUMENTS_DIR = "e2e-documents";
 
 /** Refuse to reset anything that is not clearly a disposable end-to-end database. */
 export function assertDisposableDatabase(name: string): void {

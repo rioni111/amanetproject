@@ -52,7 +52,10 @@ test("an administrator creates a matter and edits it", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1, name: `${title} (amended)` })).toBeVisible();
   await expect(page.locator("header").getByText("Urgent")).toBeVisible();
   const matterId = Number(page.url().split("/").pop());
-  const stored = await apiGet<{ data: { due_date: string; priority: string; matter_number: string } }>(page.request, `/api/matters/${matterId}`);
+  const stored = await apiGet<{ data: { due_date: string; priority: string; matter_number: string } }>(
+    page.request,
+    `/api/matters/${matterId}`,
+  );
   expect(stored.data).toMatchObject({ due_date: isoDate(20), priority: "urgent", matter_number: number });
 
   // History records the creation, the edit and the priority change.

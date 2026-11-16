@@ -1,7 +1,8 @@
 import { execSync } from "node:child_process";
+import { rmSync } from "node:fs";
 import path from "node:path";
 
-import { E2E_DATABASE, FRONTEND_URL, SESSION_COOKIE, assertDisposableDatabase } from "./env";
+import { E2E_DATABASE, E2E_DOCUMENTS_DIR, FRONTEND_URL, SESSION_COOKIE, assertDisposableDatabase } from "./env";
 
 /**
  * Resets the DISPOSABLE end-to-end database to the documented demo workspace before every run, so
@@ -17,6 +18,9 @@ export default async function globalSetup() {
       stdio: "inherit",
       env: { ...process.env, DB_DATABASE: E2E_DATABASE },
     });
+    // The E2E API stores PDFs in its own private folder; start every run with an empty one.
+    if (!/^e2e-[a-z0-9-]+$/.test(E2E_DOCUMENTS_DIR)) throw new Error(`Refusing to clear "${E2E_DOCUMENTS_DIR}".`);
+    rmSync(path.resolve(__dirname, "../../backend/storage/app/private", E2E_DOCUMENTS_DIR), { recursive: true, force: true });
   }
   await warmUp();
 }
@@ -27,7 +31,7 @@ export default async function globalSetup() {
  * pass; the API still rejects it, so nothing is accessed). Failures are ignored.
  */
 async function warmUp() {
-  const routes = ["/login", "/dashboard", "/matters", "/clients", "/matters/1", "/clients/1"];
+  const routes = ["/login", "/dashboard", "/matters", "/clients", "/documents", "/matters/1", "/clients/1", "/matters/1/documents/1"];
   for (const route of routes) {
     try {
       await fetch(`${FRONTEND_URL}${route}`, { headers: { cookie: `${SESSION_COOKIE}=warm-up` }, signal: AbortSignal.timeout(120_000) });
