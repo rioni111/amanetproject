@@ -34,11 +34,19 @@ enum ActivityEventType: string
     case ClientUpdated = 'client.updated';
     case ClientDeleted = 'client.deleted';
 
-    // Phase 3–4: documents and client requests
+    // Phase 3: document library (download = audited file access; inline previews are not logged)
     case DocumentUploaded = 'document.uploaded';
     case DocumentVersionAdded = 'document.version_added';
+    case DocumentUpdated = 'document.updated';
+    case DocumentArchived = 'document.archived';
+    case DocumentRestored = 'document.restored';
+    case DocumentDownloaded = 'document.downloaded';
+
+    // Phase 4: client document requests (catalogue only)
     case DocumentRequested = 'document.requested';
+    case DocumentSubmitted = 'document.submitted';
     case DocumentReviewed = 'document.reviewed';
+    case CorrectionRequested = 'document.correction_requested';
     case ClientResponded = 'client.responded';
 
     // Phase 5–6: signing

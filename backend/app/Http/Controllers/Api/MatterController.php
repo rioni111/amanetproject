@@ -101,6 +101,7 @@ class MatterController extends Controller
             ->withCount([
                 'tasks',
                 'notes',
+                'documents as documents_count' => fn (Builder $q) => $q->where('status', 'active'),
                 'tasks as open_tasks_count' => fn (Builder $q) => $q->whereIn('status', TaskStatus::openValues()),
                 'tasks as completed_tasks_count' => fn (Builder $q) => $q->where('status', TaskStatus::Completed->value),
                 'tasks as overdue_tasks_count' => fn (Builder $q) => $q->whereIn('status', TaskStatus::openValues())->where('due_at', '<', $now),

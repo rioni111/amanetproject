@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Models\ActivityEvent;
 use App\Models\Client;
+use App\Models\Document;
+use App\Models\DocumentVersion;
 use App\Models\Matter;
 use App\Models\MatterNote;
 use App\Models\Task;
@@ -37,6 +39,8 @@ class AppServiceProvider extends ServiceProvider
             'task' => Task::class,
             'matter_note' => MatterNote::class,
             'activity_event' => ActivityEvent::class,
+            'document' => Document::class,
+            'document_version' => DocumentVersion::class,
         ]);
 
         Password::defaults(fn () => $this->app->isProduction()

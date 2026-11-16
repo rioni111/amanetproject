@@ -18,6 +18,15 @@ return [
      */
     'timezone' => env('LEXORA_TIMEZONE', 'UTC'),
 
+    /*
+     | Document library (Phase 3). The PHP limits upload_max_filesize / post_max_size must be larger
+     | (setup-windows.bat sets 25M / 30M).
+     */
+    'documents' => [
+        'disk' => 'documents',
+        'max_upload_mb' => (int) env('DOCUMENTS_MAX_UPLOAD_MB', 20),
+    ],
+
     'pagination' => [
         'default_per_page' => 15,
         'max_per_page' => 100,

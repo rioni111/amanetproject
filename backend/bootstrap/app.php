@@ -5,6 +5,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -41,6 +42,15 @@ return Application::configure(basePath: dirname(__DIR__))
                         ? 'The requested resource was not found.'
                         : 'The requested endpoint does not exist.',
                 ], 404);
+            }
+        });
+
+        // The request body exceeded PHP's post_max_size (e.g. a very large PDF): friendly JSON 413.
+        $exceptions->render(function (PostTooLargeException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'message' => 'The file is too large. PDFs may be at most '.config('lexora.documents.max_upload_mb', 20).' MB.',
+                ], 413);
             }
         });
 
