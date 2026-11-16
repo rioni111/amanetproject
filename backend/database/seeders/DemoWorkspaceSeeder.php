@@ -114,6 +114,7 @@ class DemoWorkspaceSeeder extends Seeder
                     'due_at' => $d($due),
                     'closed_at' => $d($closed, 15),
                     'archived_at' => $d($archived, 10),
+                    'archived_from_status' => $status === MatterStatus::Archived ? ($closed !== null ? MatterStatus::Closed : MatterStatus::Open) : null,
                     'created_at' => $openedAt,
                     'updated_at' => $now->copy()->subDays($lastActivity)->subMinutes(count($matters) * 7),
                 ])->save();

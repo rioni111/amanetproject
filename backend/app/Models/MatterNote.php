@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasLockVersion;
 use Database\Factories\MatterNoteFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -13,13 +14,20 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MatterNote extends Model
 {
     /** @use HasFactory<MatterNoteFactory> */
-    use HasFactory;
+    use HasFactory, HasLockVersion;
 
     protected $fillable = [
         'matter_id',
         'author_id',
         'body',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'lock_version' => 'integer',
+        ];
+    }
 
     public function matter(): BelongsTo
     {

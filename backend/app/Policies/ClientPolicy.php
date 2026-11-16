@@ -16,4 +16,20 @@ class ClientPolicy
     {
         return $user->isAdmin();
     }
+
+    public function create(User $user): bool
+    {
+        return $user->isAdmin();
+    }
+
+    public function update(User $user, Client $client): bool
+    {
+        return $user->isAdmin();
+    }
+
+    /** Authorisation only; the "no matters" retention rule is enforced by ClientService (409). */
+    public function delete(User $user, Client $client): bool
+    {
+        return $user->isAdmin();
+    }
 }

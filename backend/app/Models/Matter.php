@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\MatterStatus;
 use App\Enums\Priority;
+use App\Models\Concerns\HasLockVersion;
 use Database\Factories\MatterFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -11,11 +12,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class Matter extends Model
 {
     /** @use HasFactory<MatterFactory> */
-    use HasFactory;
+    use HasFactory, HasLockVersion;
 
     protected $fillable = [
         'matter_number',
@@ -40,6 +42,8 @@ class Matter extends Model
             'due_at' => 'immutable_datetime',
             'closed_at' => 'immutable_datetime',
             'archived_at' => 'immutable_datetime',
+            'archived_from_status' => MatterStatus::class,
+            'lock_version' => 'integer',
         ];
     }
 
@@ -86,6 +90,21 @@ class Matter extends Model
     public function scopeOverdue(Builder $query, ?Carbon $now = null): void
     {
         $query->active()->whereNotNull('due_at')->where('due_at', '<', $now ?? Carbon::now());
+    }
+
+    public function isArchived(): bool
+    {
+        return $this->status === MatterStatus::Archived;
+    }
+
+    /** Archived matters are read-only until restored (tasks, notes and details included). */
+    public function assertNotArchived(): void
+    {
+        if ($this->isArchived()) {
+            throw new ConflictHttpException(
+                'This matter is archived and read-only. Restore it to make changes.'
+            );
+        }
     }
 
     public function isOverdue(): bool

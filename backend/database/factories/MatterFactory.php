@@ -37,6 +37,7 @@ class MatterFactory extends Factory
             'status' => $status,
             'closed_at' => in_array($status, [MatterStatus::Closed, MatterStatus::Archived], true) ? Carbon::now()->subDays(3) : null,
             'archived_at' => $status === MatterStatus::Archived ? Carbon::now()->subDay() : null,
+            'archived_from_status' => $status === MatterStatus::Archived ? MatterStatus::Closed : null,
         ]);
     }
 

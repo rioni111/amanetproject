@@ -31,6 +31,7 @@
         <env name="SANCTUM_STATEFUL_DOMAINS" value="localhost:3000"/>
         <env name="FRONTEND_URL" value="http://localhost:3000"/>
         <env name="LEXORA_UPCOMING_WINDOW_DAYS" value="14"/>
+        <env name="LEXORA_TIMEZONE" value="UTC"/>
         <env name="DEMO_ADMIN_EMAIL" value="admin@lexora.test"/>
         <env name="DEMO_ADMIN_PASSWORD" value="Test-Password-123"/>
         <env name="PULSE_ENABLED" value="false"/>

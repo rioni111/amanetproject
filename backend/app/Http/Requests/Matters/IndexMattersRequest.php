@@ -10,7 +10,7 @@ use Illuminate\Validation\Rule;
 
 class IndexMattersRequest extends FormRequest
 {
-    public const SORTABLE = ['updated_at', 'opened_at', 'due_at', 'matter_number', 'title', 'priority'];
+    public const SORTABLE = ['updated_at', 'created_at', 'opened_at', 'due_at', 'matter_number', 'title', 'priority'];
 
     public function authorize(): bool
     {
@@ -25,6 +25,8 @@ class IndexMattersRequest extends FormRequest
             'status' => ['nullable', Rule::in([...MatterStatus::values(), 'active'])],
             'priority' => ['nullable', Rule::enum(Priority::class)],
             'client_id' => ['nullable', 'integer', 'min:1'],
+            'matter_type' => ['nullable', 'string', 'max:100'],
+            'deadline' => ['nullable', Rule::in(['overdue', 'upcoming', 'none'])],
             'sort' => ['nullable', Rule::in(self::SORTABLE)],
             'direction' => ['nullable', Rule::in(['asc', 'desc'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:'.config('lexora.pagination.max_per_page')],
