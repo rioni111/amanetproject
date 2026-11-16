@@ -50,7 +50,7 @@ uses sessions; kept so a stray bearer token can never cause a 500) are Laravel f
 | id | bigint PK | |
 | name | varchar(200) | `CHECK (length(btrim(name)) > 0)`, indexed |
 | client_type | varchar(20) | `individual` \| `organization` (CHECK), indexed |
-| email | varchar(255) | indexed, **not unique** (deliberate — one contact address can serve several related clients) |
+| email | varchar(255) **null** (Phase 2) | indexed, **not unique** (deliberate — one contact address can serve several related clients); optional so a client can be recorded before an address is known |
 | phone | varchar(50) null | |
 | address | text null | |
 | reference_number | varchar(50) null **unique** | firm's client reference, e.g. `CL-1001` |
@@ -70,11 +70,59 @@ uses sessions; kept so a stray bearer token can never cause a 500) are Laravel f
 | priority | varchar(20) default `medium` | `low, medium, high, urgent` |
 | opened_at | timestamptz | |
 | due_at | timestamptz null | the matter deadline |
-| closed_at | timestamptz null | `CHECK (status <> 'closed' OR closed_at IS NOT NULL)` |
-| archived_at | timestamptz null | `CHECK (status <> 'archived' OR archived_at IS NOT NULL)` |
-| created_at / updated_at | timestamptz | `updated_at` indexed (recent matters) |
+| closed_at | timestamptz null | `CHECK (status <> 'closed' OR closed_at IS NOT NULL)`; Phase 2: `CHECK (status IN ('closed','archived') OR closed_at IS NULL)` |
+| archived_at | timestamptz null | `CHECK (status <> 'archived' OR archived_at IS NOT NULL)`; Phase 2: `CHECK (status = 'archived' OR archived_at IS NULL)` |
+| archived_from_status | varchar(20) null (Phase 2) | status held before archiving (restore target); only set on archived matters (CHECK) |
+| lock_version | integer default 1 (Phase 2) | optimistic concurrency, incremented on every update (`CHECK >= 1`) |
+| created_at / updated_at | timestamptz | `updated_at` indexed (recent matters); Phase 2 indexes `created_at`, `opened_at` |
 
 Indexes: `(status, due_at)` serves the dashboard's active/upcoming/overdue queries; `priority`, `client_id`, `matter_type`.
+
+**Date semantics (Phase 2).** `opened_at` / `due_at` stay `timestamptz` (UTC). The API exchanges them as calendar dates in the
+firm's time zone (`LEXORA_TIMEZONE`): a deadline date is stored as the **end** of that day, an opening date as its start
+(`App\Support\LegalDate`). A matter is overdue only after its whole deadline day has passed, and dates never shift by a day
+between server and browser time zones.
+
+#### Matter lifecycle (Phase 2 transition policy)
+
+```
+            ┌──────────── in_progress ◄────────┐
+            │      ▲            │              │
+            ▼      │            ▼              │
+  open ◄──────► on_hold      closed ──reopen──►(open | in_progress)
+    │  ▲           │            ▲
+    │  └───────────┘            │
+    └──────────── any active ───┘
+  any non-archived ──archive──► archived ──restore──► (status held before archiving)
+```
+
+| From | Allowed (status endpoint) |
+| --- | --- |
+| open | in_progress, on_hold, closed |
+| in_progress | open, on_hold, closed |
+| on_hold | open, in_progress, closed |
+| closed | open, in_progress (reopen — `closed_at` cleared) |
+| archived | none — use **restore** |
+
+Archive is allowed from every non-archived status (also from active states, e.g. a matter opened in error); it keeps
+`closed_at`, sets `archived_at` and `archived_from_status`. Restore returns to `archived_from_status` (legacy rows: closed if
+`closed_at` is set, otherwise open). Archived matters are **read-only** (details, status, tasks, notes → 409). Matters are never
+hard-deleted. Rules live in `App\Enums\MatterStatus::allowedTransitions()` and `App\Services\MatterService`; the database CHECKs
+above guarantee the timestamps stay consistent even if application code were bypassed.
+
+### `matter_number_counters` (Phase 2)
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| year | smallint PK | `CHECK (year BETWEEN 2000 AND 2999)` |
+| last_value | integer | last number issued for that year (`CHECK >= 1`) |
+| updated_at | timestamptz | |
+
+`MatterNumberGenerator` issues `LEX-{year}-{0000}` with one atomic `INSERT … ON CONFLICT (year) DO UPDATE SET last_value =
+GREATEST(last_value, highest existing number) + 1 RETURNING last_value`, executed **inside the transaction that creates the
+matter**. The row lock serialises concurrent creators on that single row (no table lock), a rolled-back creation also rolls back
+the counter (no gaps from failures), and `GREATEST` keeps the counter ahead of numbers inserted without it (e.g. the seeder).
+`matters.matter_number` stays `UNIQUE` as the final guarantee. Verified with 4 concurrent PHP processes drawing 100 numbers.
 
 ### `tasks`
 
@@ -88,10 +136,15 @@ Indexes: `(status, due_at)` serves the dashboard's active/upcoming/overdue queri
 | priority | varchar(20) default `medium` | shared `Priority` enum |
 | due_at | timestamptz null | |
 | completed_at | timestamptz null | `CHECK ((status = 'completed') = (completed_at IS NOT NULL))` |
-| created_by | FK → users null | `SET NULL` |
+| created_by | FK → users null | `SET NULL`; set from the session, never from the request |
+| lock_version | integer default 1 (Phase 2) | optimistic concurrency |
 | created_at / updated_at | timestamptz | |
 
 Indexes: `(matter_id, status)`, `(status, due_at)`.
+
+Phase 2 behaviour: completing sets `completed_at` (now); reopening (to `todo`/`in_progress`) clears it — the CHECK above makes
+any other combination impossible. Tasks may be deleted (operational items); the deletion is recorded as `task.deleted` with the
+task's id and title.
 
 ### `matter_notes` (internal)
 
@@ -104,6 +157,9 @@ Indexes: `(matter_id, status)`, `(status, due_at)`.
 | created_at / updated_at | timestamptz | index `(matter_id, created_at)` |
 
 Internal notes must **never** be exposed through unauthenticated client links (enforced by separate public controllers/resources in Phase 4).
+
+Phase 2: `lock_version` added. Note bodies are plain text, never copied into activity metadata or logs. **Deletion policy:**
+a deleted note is hard-deleted (its confidential text is not retained) and a `note.deleted` event records the fact, actor and time.
 
 ### `activity_events` (append-only history)
 
@@ -123,6 +179,12 @@ Internal notes must **never** be exposed through unauthenticated client links (e
 
 Append-only is enforced twice: the Eloquent model throws on `updating`/`deleting`, and a PostgreSQL trigger
 (`activity_events_no_update_delete`) raises on any `UPDATE`/`DELETE`. Indexes: `(matter_id, occurred_at)`, `event_type`, `occurred_at`.
+
+Event types emitted from Phase 2 (always in the same transaction as the change): `matter.created`, `matter.updated`
+(metadata `changes` with before/after for title, type, client, dates; description only as `changed: true`),
+`matter.status_changed`, `matter.priority_changed`, `matter.archived`, `matter.restored`, `task.created`, `task.updated`,
+`task.completed`, `task.reopened`, `task.deleted`, `note.added`, `note.updated`, `note.deleted`, and client events
+`client.created`, `client.updated` (changed field names only), `client.deleted` with `matter_id = null`.
 
 ## Seed data
 

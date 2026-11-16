@@ -54,7 +54,7 @@ class MatterService
             ])->save();
 
             $this->activity->record($matter, ActivityEventType::MatterCreated,
-                "Matter {$matter->matter_number} opened for {$client->name}.", $actor, $matter,
+                "Matter {$matter->matter_number} opened for ".rtrim($client->name, '.').'.', $actor, $matter,
                 ['status' => $status->value, 'priority' => $matter->priority->value]);
 
             return $matter;

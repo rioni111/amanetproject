@@ -77,15 +77,34 @@ app/
 ├── Console/Commands/CreateAdminCommand.php   php artisan lexora:create-admin
 ├── Enums/                                    UserRole, ClientType, MatterStatus, Priority, TaskStatus, ActorType, ActivityEventType
 ├── Http/
-│   ├── Controllers/Api/                      AuthController, DashboardController, MatterController, ClientController (thin)
+│   ├── Controllers/Api/                      Auth, Dashboard, Matter, MatterLifecycle (status/archive/restore), MatterTask,
+│   │                                         MatterNote, MatterActivity, Client (all thin)
 │   ├── Middleware/EnsureUserIsAdmin.php      alias "admin"
-│   ├── Requests/                             LoginRequest (+ throttling), IndexMattersRequest, IndexClientsRequest
-│   └── Resources/                            User/Client/Matter resources, PaginatedCollection envelope, DashboardSummaryResource
-├── Models/                                   User, Client, Matter, Task, MatterNote, ActivityEvent
-├── Policies/                                 MatterPolicy, ClientPolicy
+│   ├── Requests/                             LoginRequest; Clients/, Matters/, Tasks/, Notes/ (store/update/index/status/lifecycle)
+│   └── Resources/                            User/Client/Matter/Task/MatterNote/ActivityEvent resources + PaginatedCollection envelope
+├── Models/                                   User, Client, Matter, Task, MatterNote, ActivityEvent; Concerns/HasLockVersion
+├── Policies/                                 MatterPolicy (view/create/update/archive/restore), ClientPolicy (+create/update/delete)
 ├── Providers/AppServiceProvider.php          rate limiters, morph map, strict models, password rules, gates
-└── Services/                                 DashboardService (aggregation), ActivityLogger (append-only history)
+├── Services/                                 DashboardService, ActivityLogger, MatterService (lifecycle), MatterNumberGenerator,
+│                                             TaskService, MatterNoteService, ClientService
+└── Support/LegalDate.php                     calendar-date ⇄ timestamptz conversion in the firm's time zone
 ```
+
+Phase 2 write path (every mutation):
+
+```
+Form Request (authorize via policy, validate, reject server-managed fields)
+  → Service: DB::transaction {
+        SELECT … FOR UPDATE (matter, then task/note)      ← serialises concurrent changes per matter
+        assert lock_version (409) · assert not archived (409) · validate transition (422)
+        write change
+        ActivityLogger::record(...)                       ← same transaction: no change without its history
+     }
+  → API Resource (reloaded with counters)
+```
+
+Tasks and notes are nested routes with **scoped bindings** (`/matters/{matter}/tasks/{task}` is 404 unless the task belongs to that
+matter); the creator/author always comes from the session.
 
 Decisions:
 
@@ -94,6 +113,8 @@ Decisions:
 - `Model::shouldBeStrict()` outside production catches N+1 queries and silently discarded attributes.
 - `Relation::enforceMorphMap()` stores stable aliases (`matter`, `task`…) instead of class names in polymorphic columns.
 - All timestamps are `timestamptz`, the app and DB session timezone are UTC, and the API emits ISO-8601. The browser formats local times.
+- Legal dates (deadlines, opening dates) are calendar dates in the firm's time zone (`LEXORA_TIMEZONE`) — see data-model.md.
+- Matter status changes are an explicit action with a documented transition policy (data-model.md, "Matter lifecycle").
 
 ### Dashboard definitions
 
@@ -114,20 +135,28 @@ Defined once in `MatterStatus::active()` / `TaskStatus::openValues()` and `Dashb
 src/
 ├── app/
 │   ├── (auth)/login/            sign-in page
-│   ├── (dashboard)/             AuthGuard + AppShell → dashboard, matters, clients
-│   ├── layout.tsx, providers.tsx, not-found.tsx, page.tsx (→ /dashboard)
+│   ├── (dashboard)/             AuthGuard + AppShell → dashboard, matters, matters/[id], clients, clients/[id]
+│   ├── layout.tsx, providers.tsx (TanStack Query + toasts), not-found.tsx, page.tsx (→ /dashboard)
 ├── components/
-│   ├── ui/                      button, input, label, select, card, badge, skeleton, table, sheet, alert-dialog
+│   ├── ui/                      button, input, textarea, label, select, card, badge, skeleton, table, sheet, dialog, tabs, alert-dialog
 │   ├── layout/                  app-shell, app-sidebar, app-header (+ mobile drawer), sidebar-nav, user-panel, nav-config
 │   ├── dashboard/               stat-card, status-breakdown, recent-matters, upcoming-deadlines
-│   └── shared/                  page-header, status/priority badges, deadline, data-table, pagination, search-input,
-│                                empty/error/loading states, confirm-dialog, form-field, brand-mark, client-avatar
-├── features/                    auth (api, hooks, guard, login form), dashboard, matters, clients
+│   └── shared/                  page-header, status/priority badges, deadline, data-table, pagination, search-input, toaster,
+│                                empty/error/loading states, confirm-dialog, form-field, form-alert, brand-mark, client-avatar
+├── features/                    auth, dashboard, clients (list, form dialog, detail), matters (list, form dialog, actions,
+│                                detail workspace), tasks (panel), notes (panel), activity (timeline)
 ├── hooks/                       use-url-filters, use-now
-├── lib/api/                     client, errors, config        lib/utils/  cn, format, labels
+├── lib/api/                     client (get/post/patch/delete), errors, config, invalidate
+├── lib/                         forms (server errors → fields, submit guard)   lib/utils/  cn, format, labels
 ├── types/api.ts                 types mirroring API Resources
 └── proxy.ts                     optimistic redirect for guests
 ```
+
+State (Phase 2): server state lives only in TanStack Query. Mutations never update the UI optimistically; after the API confirms,
+`invalidateWorkspace()` refreshes the affected lists, the matter (detail, tasks, notes, activity) and the dashboard, and success toasts
+are shown only then. Forms use React Hook Form + Zod mirroring the Form Requests; 422 errors are mapped onto fields, 409 conflicts
+shown as a banner; a synchronous submit guard prevents double submissions. Edit forms reset only when opened and send the
+`lock_version` they loaded.
 
 Design system: tokens in `src/app/globals.css` (warm off-white `#FAFAF8`, charcoal `#111827`, teal accent `#0F766E`, restrained status
 colours; all text pairs ≥ 4.5:1). Geist Sans/Mono/Serif are bundled locally. `prefers-reduced-motion` disables animation. Security
