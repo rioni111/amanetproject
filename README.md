@@ -145,6 +145,9 @@ Open **http://localhost:3000** (use `localhost`, not `127.0.0.1` — see Trouble
 | --- | --- |
 | `admin@lexora.test` | `Lexora!Demo2026` |
 
+These demo values are committed on purpose for local development only. How to rotate them, and what must change before any
+public deployment, is described in [docs/security-credentials.md](docs/security-credentials.md).
+
 Re-running `php artisan db:seed` is safe: records are keyed on natural identifiers and are never duplicated.
 To start from scratch: `php artisan migrate:fresh --seed`.
 
