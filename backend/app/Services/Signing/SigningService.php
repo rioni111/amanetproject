@@ -210,9 +210,14 @@ class SigningService
         // 3. Generate + verify.
         $signedAt = Carbon::now()->startOfSecond();
         $reference = PdfSigningService::captionReference($requestUuid);
+        // tempnam() atomically reserves a unique name by creating the file. The reservation is KEPT until this
+        // attempt ends: deleting it early lets a parallel signing process receive the same name and write the
+        // same "<name>.pdf" (observed on Windows under concurrent load).
         $temp = tempnam(sys_get_temp_dir(), 'lexora-sign-');
+        if ($temp === false) {
+            throw new SigningFailedException('The signed PDF could not be prepared. The original document was not changed.');
+        }
         $output = $temp.'.pdf';
-        @unlink($temp);
         try {
             $this->engine->sign($sourcePath, $output, $pageSizes, $appearance, $placement, $signerName, $signedAt, $reference);
             $filename = $this->documents->safeFilename(preg_replace('/\.pdf$/i', '', $source->original_filename).'-signed.pdf');
@@ -301,6 +306,7 @@ class SigningService
                 });
         } finally {
             @unlink($output);
+            @unlink($temp);
         }
     }
 

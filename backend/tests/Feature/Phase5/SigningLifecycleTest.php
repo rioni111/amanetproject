@@ -176,6 +176,59 @@ class SigningLifecycleTest extends TestCase
         $this->assertSame('signed', $request->fresh()->status->value);
     }
 
+    /**
+     * Regression (found by the full Windows run): the temporary output name must stay reserved while the PDF is
+     * generated, or a parallel signing process can be handed the same name and overwrite/delete this file.
+     * The reservation and the output are both removed afterwards, on success and on failure.
+     */
+    #[Test]
+    public function the_temporary_output_name_stays_reserved_while_signing_and_is_always_cleaned_up(): void
+    {
+        $leftovers = fn () => glob(sys_get_temp_dir().DIRECTORY_SEPARATOR.'lexora-sign-*') ?: [];
+        $before = $leftovers();
+        $engine = new class(app(PdfInspector::class)) extends PdfSigningService
+        {
+            /** @var list<array{output: string, reserved: bool}> */
+            public array $calls = [];
+
+            public bool $fail = false;
+
+            public function sign(string $sourcePath, string $outputPath, ...$rest): void
+            {
+                $this->calls[] = ['output' => $outputPath, 'reserved' => is_file(preg_replace('/\.pdf$/', '', $outputPath))];
+                parent::sign($sourcePath, $outputPath, ...$rest);
+                if ($this->fail) {
+                    throw new SigningFailedException('The signed PDF could not be generated. The original document was not changed.');
+                }
+            }
+        };
+        $this->app->instance(PdfSigningService::class, $engine);
+        [$request, $token] = $this->clientSigning();
+        $this->viewAndStart($token);
+        $sign = fn () => $this->app->make(SigningService::class)->signAsClient(SecureAccessLink::query()->sole(),
+            [...$this->signaturePayload(), 'consent' => true], '127.0.0.1', 'PHPUnit');
+
+        $engine->fail = true; // the PDF was written, then the attempt fails
+        try {
+            $sign();
+            $this->fail('The signing attempt should have failed.');
+        } catch (SigningFailedException) {
+        }
+        $this->assertSame($before, $leftovers(), 'a failed attempt leaves no reservation or output behind');
+
+        $engine->fail = false;
+        $sign();
+        $this->assertSame('signed', $request->fresh()->status->value);
+        $this->assertSame($before, $leftovers(), 'a successful attempt leaves no reservation or output behind');
+
+        $this->assertCount(2, $engine->calls);
+        foreach ($engine->calls as $call) {
+            $this->assertTrue($call['reserved'], 'the unique temporary name is still reserved while the PDF is generated');
+        }
+        $this->assertNotSame($engine->calls[0]['output'], $engine->calls[1]['output']);
+        $this->app->forgetInstance(PdfSigningService::class);
+    }
+
     #[Test]
     public function output_verification_rejects_a_bad_signed_file(): void
     {
