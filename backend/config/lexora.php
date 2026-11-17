@@ -105,6 +105,9 @@ return [
         'password' => env('DEMO_ADMIN_PASSWORD'),
     ],
 
+    // Phase 7: reverse proxies whose X-Forwarded-* headers are trusted (see AppServiceProvider, DEPLOYMENT_GUIDE §6).
+    'trusted_proxies' => env('TRUSTED_PROXIES'),
+
     // Phase 7: fictional documents, requests and signatures for the demo matters (DemoDocumentsSeeder).
     // Off for the PHPUnit and E2E databases, whose tests count records from a known baseline.
     'demo_documents' => filter_var(env('LEXORA_DEMO_DOCUMENTS', true), FILTER_VALIDATE_BOOL),
