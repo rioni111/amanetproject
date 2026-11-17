@@ -54,6 +54,11 @@ export default defineConfig({
         SESSION_COOKIE,
         // Uploaded PDFs go to their own private folder, never the development document storage.
         DOCUMENTS_STORAGE_DIR: E2E_DOCUMENTS_DIR,
+        // Many public-link calls come from one IP (127.0.0.1) within a minute; the limits themselves are
+        // verified by PHPUnit (ClientUploadTest), so they are raised for the suite instead of slowing it down.
+        PUBLIC_LINK_VIEWS_PER_MINUTE: "600",
+        PUBLIC_LINK_UPLOADS_PER_MINUTE: "200",
+        PUBLIC_LINK_INVALID_ATTEMPTS: "200",
       },
     },
     {
