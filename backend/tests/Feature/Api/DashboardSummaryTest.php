@@ -58,6 +58,13 @@ class DashboardSummaryTest extends TestCase
             'overdue_matters' => 1,
             'open_tasks' => 3,
             'overdue_tasks' => 1,
+            // Phase 4 counters (this fixture has no client document requests; see Phase4 DocumentRequestCountersTest).
+            'requests_outstanding' => 0,
+            'requests_pending' => 0,
+            'requests_awaiting_review' => 0,
+            'requests_correction' => 0,
+            'requests_overdue' => 0,
+            'requests_approved' => 0,
         ]);
         $response->assertJsonPath('data.upcoming_window_days', 14);
         $response->assertJsonPath('data.upcoming_deadlines.*.matter_number', ['T-1', 'T-2']);
@@ -118,6 +125,13 @@ class DashboardSummaryTest extends TestCase
                 'overdue_matters' => 1,
                 'open_tasks' => 11,
                 'overdue_tasks' => 1,
+                // Phase 4: the demo seed creates no client document requests.
+                'requests_outstanding' => 0,
+                'requests_pending' => 0,
+                'requests_awaiting_review' => 0,
+                'requests_correction' => 0,
+                'requests_overdue' => 0,
+                'requests_approved' => 0,
             ]);
     }
 }
