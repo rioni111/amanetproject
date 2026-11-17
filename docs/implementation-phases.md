@@ -44,11 +44,20 @@ Seven-day delivery plan. ✅ = implemented and verified · 🟡 = foundation onl
 - ✅ Library `/documents`: search (title, file name, matter, client, category), filters, sorting, pagination in the URL
 - ✅ Document events in the append-only timeline (downloads audited); 30 PHPUnit + 6 Playwright tests
 
-## 4. Secure Client Document Requests & Review — ⬜
+## 4. Secure Client Document Requests & Review — ✅
 
-- `document_requests`, `secure_access_links` (hashed, expiring, revocable, single-purpose tokens)
-- Public upload page (no account); admin review: accept or request corrections
-
+- ✅ `document_requests`, `secure_access_links` (256-bit tokens, SHA-256 stored, purpose-scoped, expiring, revocable, one use),
+  `document_request_submissions`; integrity triggers (client = matter client, no client change with open requests, immutable
+  submissions/decisions), one usable link per request (partial unique index)
+- ✅ Admin: Client requests tab, `/document-requests` list (search, status groups, overdue, sorting, pagination in the URL),
+  request page with one-time link reveal + copy, replacement, revocation, cancel, edit
+- ✅ Public `/client-upload#token` page (no account, no cookies, token never in a URL path or log) and isolated public API
+- ✅ Client uploads reuse the Phase 3 pipeline: first submission = new document (origin client, v1), corrections = next version of
+  the same document; links consumed only with a committed version; archive revokes links
+- ✅ Review: start review, approve (exact version recorded, links revoked), request correction (reason + fresh link), history
+- ✅ Dashboard and matter counters (pending, awaiting review, corrections, overdue, approved); 13 new activity event types
+- ✅ 33 PHPUnit tests (incl. multi-process races) + 7 Playwright tests (desktop scenarios A–G, I, J and Pixel 7 scenario H)
+- ⬜ Email delivery of links is Phase 6 (links are copied by the administrator)
 ## 5. Electronic Document Signing — ⬜
 
 - `signing_requests`, `signature_events`; one signer per PDF

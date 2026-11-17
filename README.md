@@ -20,10 +20,11 @@ A legal matter-management and document-signing platform built for the **Amanet F
 | Matters | List with search, status/priority/deadline/client filters, sorting, quick actions; create (unique `LEX-YYYY-NNNN` number), edit, status transitions, priority, deadlines, archive & restore |
 | Matter workspace | `/matters/{id}`: overview, **tasks** (create, edit, complete/reopen, delete), **internal notes** (create, edit, delete — admin-only), **activity timeline** |
 | Documents | `/documents` library and a Documents tab per matter: upload PDFs (private storage, SHA-256), preview in the app (PDF.js), download, **immutable version history** (preview/download any version), metadata edit, archive; search by title, file name, matter, client and category |
-| Data integrity | Each change and its history entry in one transaction; optimistic concurrency (409 on stale edits); append-only history; immutable document versions |
+| Client requests | Request a PDF from a matter's client through a **secure, expiring, one-use link** (256-bit token, only its hash stored; copy, replace, revoke). The client uploads on a public page **without an account**; the file arrives in the matter as a new document/version. Review: preview, approve the exact version, or request a correction (reason + fresh link → next version). `/document-requests` list and dashboard counters for pending, overdue, awaiting review, corrections and approved |
+| Data integrity | Each change and its history entry in one transaction; optimistic concurrency (409 on stale edits); append-only history; immutable document versions and client submissions; database triggers and composite keys guard request/link/matter consistency |
 | UI | Responsive desktop/tablet/mobile, accessible dialogs and tabs, loading/empty/error states, success toasts, WCAG 2.2 AA-minded |
 
-Planned for later phases: secure client upload requests (4), in-house PDF e-signing (5),
+Planned for later phases: in-house PDF e-signing (5),
 email + notifications + signing progress (6), hardening and polish (7).
 
 ## Technology
@@ -202,6 +203,18 @@ Latest verified results: [Phase 2 report](docs/PHASE_2_IMPLEMENTATION_REPORT.md#
 - After `npm install` the PDF viewer's worker and fonts are copied to `frontend/public/pdfjs` automatically (`postinstall`).
 - Search covers document metadata (title, original file name, matter, client, category) — not the text inside PDFs.
 
+## Client document requests (Phase 4)
+
+- Open a matter → **Client requests** → *Request document*. Generate the upload link now or later; it is shown **once** with a
+  *Copy link* button. Send it to the client yourself — Phase 4 does **not** email links (Phase 6 will).
+- The link looks like `http://localhost:3010/client-upload#<token>`. A localhost link only works on the development machine;
+  set `PUBLIC_APP_URL` (backend) to a public HTTPS hostname for real clients.
+- Defaults: links expire after `UPLOAD_LINK_EXPIRY_DAYS` (7; 1–30 selectable), allow one upload, and stop working when replaced,
+  revoked, approved, cancelled or when the matter is archived (restoring a matter does not revive old links).
+- Public rate limits: `PUBLIC_LINK_VIEWS_PER_MINUTE` (60), `PUBLIC_LINK_UPLOADS_PER_MINUTE` (10, plus 5 per token),
+  `PUBLIC_LINK_INVALID_ATTEMPTS` (20 failed lookups per IP → 15-minute lockout). Firm name on the client page: `LEXORA_FIRM_NAME`.
+- The client page sends no cookies and keeps the token only in memory; the token never appears in a request path or server log.
+
 ## Known limitations
 
 - The matter form's client picker and the matters client filter list the first 100 clients alphabetically (search-as-you-type picker planned).
@@ -209,10 +222,11 @@ Latest verified results: [Phase 2 report](docs/PHASE_2_IMPLEMENTATION_REPORT.md#
 - Uploaded PDFs are validated structurally (type, signature, completeness, no encryption) but **not scanned for malware**.
 - The viewer does not load PDF.js's optional WebAssembly decoders, so rare JPEG 2000 / JBIG2 images may not render in the
   preview (the download is unaffected).
-- Documents, client requests, signing, email and notifications are **designed and documented but not implemented**.
+- Signing, email and notifications are **designed and documented but not implemented** (Phases 5–6). Client request links are not emailed automatically yet.
+- Client uploads are not malware-scanned; client messages are plain text.
 - The "Coming soon" navigation items are intentionally disabled.
 - One role (`admin`) exists; the `admin` middleware and policies are in place for future roles.
 - Production deployment (HTTPS, secure cookies, queue workers) is configured through environment variables but not exercised.
 - `npm audit` reports moderate advisories in ESLint's transitive `minimatch` dependency (dev tooling only).
 
-See the [Phase 2 report](docs/PHASE_2_IMPLEMENTATION_REPORT.md) and the [Phase 1 report](docs/PHASE_1_IMPLEMENTATION_REPORT.md) for the full list.
+See the [Phase 4 report](docs/PHASE_4_IMPLEMENTATION_REPORT.md), [Phase 3 report](docs/PHASE_3_IMPLEMENTATION_REPORT.md), [Phase 2 report](docs/PHASE_2_IMPLEMENTATION_REPORT.md) and the [Phase 1 report](docs/PHASE_1_IMPLEMENTATION_REPORT.md) for the full list.

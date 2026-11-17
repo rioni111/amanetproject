@@ -195,20 +195,45 @@ Browser ◄── fetch (session cookie) ── GET …/versions/{v}/preview|dow
 Prepared for later phases: `origin` (`admin`/`client`) and `kind` (`upload`/`signed`) on versions; signing requests will
 reference an immutable `document_versions.id`; client submissions (Phase 4) arrive as new documents/versions with
 `origin = client` through the same service and storage.
-## 7. Future secure-link flow (Phase 4 — design)
+## 7. Client document requests and secure links (Phase 4 — implemented)
 
 ```
-Admin creates request ──► random 256-bit token (Str::random(64)/random_bytes) ──► store SHA-256(token) in secure_access_links
-                                    │                                               + purpose, resource, expires_at, max_uses
-                                    └──► plaintext token only in the emailed URL: https://app/r/{token}
-Client opens link ──► API hashes presented token ──► lookup by hash ──► check: not revoked, not expired, purpose matches,
-                                                                          resource matches, use count ──► allow ONE operation
+Admin (Sanctum session) ──► POST /api/matters/{m}/document-requests [issue_link]          DocumentRequestService
+                              token = base64url(random_bytes(32))  (256 bits, CSPRNG)    SecureAccessLinkService
+                              store SHA-256(token) only ─► secure_access_links (purpose document_upload, expires_at, max_uses 1)
+                              response ONCE: { link: { url: https://<public app>/client-upload#<token> } }   (never stored/logged)
+Admin copies the URL and sends it to the client (Phase 6 will email it)
+
+Client browser (no account, no cookies) ──► /client-upload#<token>        (static page; the fragment never reaches a server)
+   page reads the fragment ──► GET  /api/public/document-upload           header X-Upload-Token: <token>, credentials: omit
+                           ──► POST /api/public/document-upload/submit    multipart PDF (+ optional message), real XHR progress
+API public group: no session/CSRF middleware ─► throttle ─► AuthorizePublicUploadLink (Origin allow-list, token → link,
+                  purpose/expiry/revocation/use/lifecycle/archive checks) ─► PdfInspector rules ─► ClientSubmissionService:
+                  DocumentService::persistUpload (stage, verify, move) + ONE transaction: lock matter → request → link (→ document),
+                  re-check the link, new document (v1) or next version of the same document, submission row, request → submitted,
+                  link consumed, activity event (actor: client) ─► failure: new file deleted, link untouched
+Admin reviews ──► start-review ─► approve (records the exact version; revokes links) | request-correction (reason + new link)
 ```
 
-- Tokens are **single-purpose** (`upload_document`, `sign_document`) and bound to one resource; internal notes and other matter data
-  are never reachable through them.
-- Expiry and revocation are first-class columns; every use is recorded as an activity event with IP/user-agent metadata.
-- Public endpoints get their own rate limiter and return identical 404s for unknown/expired/revoked tokens.
+- **Public boundary**: `routes/api.php` registers `/api/public/document-upload*` with `withoutMiddleware(EnsureFrontendRequestsAreStateful)`:
+  no session is started, no admin cookie is read, and CSRF (a defence for cookie-authenticated requests) does not apply. The only
+  authority is the purpose-scoped token. The Origin header, when present, must be a configured frontend origin (extra browser-side
+  defence, not a substitute). Responses carry `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex`.
+- **Token transport**: in the URL *fragment* (`#…`) for the page and in the `X-Upload-Token` header for the API — never in a request
+  path or query, so it cannot appear in `php artisan serve`/Next.js request logs, proxies, Referer headers or server caches.
+  The frontend keeps it in memory only (no storage, no TanStack Query cache) and calls the API with `credentials: "omit"`.
+- **One usable link per request** (partial unique index); rotation revokes the previous link in the same transaction; archiving a
+  matter revokes all its usable links in the archive transaction (restoring never reactivates them); approval and cancellation revoke
+  too. The public API independently re-checks the matter, the request status and the client association on every call.
+- **Errors**: unknown, malformed, wrong-purpose and manually revoked/replaced tokens give one identical 404 (`link_invalid`);
+  holders of a real token get 410 explanations (`link_expired`, `link_used`, `request_approved`, `request_cancelled`,
+  `request_unavailable`). Repeated failed lookups lock an IP out for 15 minutes.
+- **Rate limits** (config `lexora.public_links`): page/API views 60/min per IP, submissions 10/min per IP and 5/min per token,
+  20 failed lookups per IP → lockout. The Playwright environment raises the per-IP values (everything runs from 127.0.0.1).
+- **Purpose separation for Phase 5**: `secure_access_links.purpose` already allows `document_signing`; the upload endpoints only
+  accept `document_upload`, so a signing token is "unknown" to them and vice versa.
+- **Email boundary**: Phase 4 never claims a link was emailed. Links are copied by the administrator; Phase 6 will send them through
+  queued mail using the same one-time URL returned by `IssuedLink`.
 
 ## 8. Future signing workflow (Phase 5–6 — design)
 
@@ -216,7 +241,8 @@ Client opens link ──► API hashes presented token ──► lookup by hash 
   (name + email snapshot, optionally a client id).
 - Status machine: `sent → viewed → started → signed` (plus `revoked`, `expired`), each transition appended to `signature_events`
   with timestamp, IP and user agent. Events are append-only, like `activity_events`.
-- Admin signing and client signing share the same pipeline; the client path is authorised by a `sign_document` secure link.
+- Admin signing and client signing share the same pipeline; the client path is authorised by a `document_signing` secure link
+  (same table, hashing, expiry and revocation as Phase 4 upload links; its own endpoints and rules).
 - Signature placement and drawing happen in the browser; the server stamps the signature image and an audit footer onto the PDF
   (PHP library, no external signing platform), computes a SHA-256 of the result and stores it as a **new immutable document version**
   linked from the signing request (`signed_document_version_id`).

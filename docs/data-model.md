@@ -13,6 +13,10 @@ clients 1───* matters                  (ON DELETE RESTRICT)
 matters 1───* tasks                    (ON DELETE CASCADE)
 matters 1───* matter_notes             (ON DELETE CASCADE)
 matters 1───* activity_events          (nullable FK, ON DELETE RESTRICT)
+matters 1───* documents 1───* document_versions                       (Phase 3)
+matters 1───* document_requests 1───* document_request_submissions    (Phase 4; request.client = matter.client)
+document_requests 1───* secure_access_links                           (Phase 4; ≤ 1 usable upload link at a time)
+document_requests *───1 documents, submissions 1───1 document_versions (same matter / same document, composite FKs)
 activity_events *───1 subject          (polymorphic: subject_type alias + subject_id)
 ```
 
@@ -168,7 +172,7 @@ a deleted note is hard-deleted (its confidential text is not retained) and a `no
 | id | bigint PK | |
 | matter_id | FK → matters null | `RESTRICT` |
 | actor_type | varchar(20) | `admin, client, system` (CHECK) |
-| actor_id | bigint null | users.id for admins; a signer/request id for clients later (no FK — polymorphic by `actor_type`) |
+| actor_id | bigint null | users.id for admins; the document request id for client submissions (Phase 4) (no FK — polymorphic by `actor_type`) |
 | actor_label | varchar(200) null | display-name snapshot at event time |
 | event_type | varchar(60) | e.g. `matter.created`, `task.completed`, later `signing.completed` — see `ActivityEventType` |
 | subject_type / subject_id | varchar / bigint null | morph-map alias (`matter`, `task`, `matter_note`…) |
@@ -189,8 +193,14 @@ Event types emitted from Phase 2 (always in the same transaction as the change):
 Phase 3 adds `document.uploaded`, `document.version_added` (metadata: document/version ids, version number, category, file
 name, size, SHA-256 — never paths or content), `document.updated` (changed fields; description only as `changed: true`),
 `document.archived`, `document.restored` and `document.downloaded` (audit of file access; inline previews are not recorded).
-Catalogued for Phase 4–6: `document.requested`, `document.submitted`, `document.reviewed`, `document.correction_requested`,
-`signing.requested|viewed|started|completed`, `link.revoked`.
+Phase 4 adds (always in the change's transaction): `document.requested`, `document_request.updated` (changed fields; the
+instructions text only as `changed: true`), `document_request.cancelled`, `link.created`, `link.rotated`, `link.revoked` (by an
+administrator, or once per archive with `links_revoked` count), `document.submitted` and `document.resubmitted` (**actor_type
+`client`**, actor_id = the request id, actor_label = the client's name; metadata includes `source: secure_link`, request,
+submission, document and version ids, SHA-256, file name/size, `has_client_message`), `document.review_started`,
+`document.approved`, `document.correction_requested` (`reason_recorded: true` — the reason text itself is stored only on the
+submission). Status transitions are in `{from, to}`. Tokens, token hashes, URLs, paths, client messages and correction reasons
+are never part of any event. Catalogued for Phase 5–6: `signing.requested|viewed|started|completed`.
 
 ### `documents` (Phase 3)
 
@@ -236,6 +246,65 @@ requests, which reference specific versions. A document never becomes "signed" b
 Immutability: trigger `document_versions_no_update_delete` rejects every `UPDATE`/`DELETE`; the model throws too. Versions are
 only ever added. Phase 5 `signing_requests.document_version_id` can therefore reference the exact bytes that were signed, and the
 signed result becomes a further version (`kind = signed`) without overwriting the source.
+### `document_requests` (Phase 4)
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id`, `uuid` | bigint / uuid | `uuid` unique |
+| `matter_id` | FK → matters (RESTRICT) | |
+| `client_id` | FK → clients (RESTRICT) | always the matter's client at creation (trigger `document_requests_client_guard`); never client-supplied |
+| `title`, `instructions` | varchar(255) / text | CHECK not blank; instructions are shown to the client |
+| `requested_category` | varchar(30) | CHECK ∈ document categories |
+| `status` | varchar(30) | CHECK ∈ `pending, submitted, under_review, correction_requested, approved, cancelled` |
+| `due_at` | timestamptz null | end of the due day in the firm's time zone (`LegalDate`) |
+| `document_id` | bigint null | composite FK `(document_id, matter_id)` → `documents (id, matter_id)`: the document is in the same matter |
+| `submissions_count`, `last_submitted_at` | int / timestamptz | numbering counter, incremented under the request row lock |
+| `created_by`, `review_started_by`, `reviewed_by`, `cancelled_by` | FK → users null (SET NULL) | |
+| `review_started_at`, `approved_at`, `cancelled_at` | timestamptz null | |
+| `approved_version_id` | bigint null | composite FK `(approved_version_id, document_id)` → `document_versions (id, document_id)` |
+| `lock_version` | int ≥ 1 | optimistic concurrency (409 on stale review decisions/edits) |
+
+CHECKs: `(status='approved') = (approved_at AND approved_version_id NOT NULL)`, `(status='cancelled') = (cancelled_at NOT NULL)`,
+every state except `pending`/`cancelled` has a document, `(document_id IS NULL) = (submissions_count = 0)`.
+Indexes: `(matter_id, status)`, `status`, `due_at`, `client_id`, `updated_at`; unique `(id, matter_id)` (FK target).
+Trigger `matters_client_change_guard` refuses changing a matter's client while it has open requests.
+
+### `secure_access_links` (Phase 4)
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id`, `uuid` | bigint / uuid | |
+| `purpose` | varchar(30) | CHECK ∈ `document_upload, document_signing`; upload links require `document_request_id` |
+| `matter_id` | FK → matters | composite FK `(document_request_id, matter_id)` → `document_requests (id, matter_id)` |
+| `document_request_id` | bigint null | |
+| `token_hash` | char(64) **unique** | SHA-256 hex of a 256-bit random token; CHECK `^[0-9a-f]{64}$`; the token is never stored |
+| `expires_at` | timestamptz | CHECK `expires_at > created_at` |
+| `revoked_at`, `revocation_reason`, `revoked_by` | | reason ∈ `revoked, replaced, request_approved, request_cancelled, matter_archived`; CHECK both or neither |
+| `consumed_at`, `max_uses` (1), `successful_uses` | | CHECK `successful_uses ≤ max_uses`, `(consumed_at NOT NULL) = (successful_uses ≥ max_uses)` |
+| `first_opened_at` | timestamptz null | first time the client opened the page (opening never consumes) |
+| `created_by` | FK → users null | |
+
+Partial unique index `secure_access_links_one_usable_upload_link (document_request_id) WHERE purpose='document_upload' AND
+revoked_at IS NULL AND consumed_at IS NULL`: at most one link per request can work.
+
+### `document_request_submissions` (Phase 4)
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `document_request_id` | FK → document_requests | `submission_number` unique per request |
+| `document_id`, `document_version_id` | bigint | composite FK `(document_version_id, document_id)` → `document_versions`; `document_version_id` unique |
+| `secure_access_link_id` | FK → secure_access_links **unique** | a link can never produce a second submission |
+| `client_message` | text null | confidential; never copied into activity metadata |
+| `submitted_by_label`, `submitted_at` | | client name snapshot (clients have no account) |
+| `review_status` | varchar(30) | `pending, in_review, approved, correction_requested, cancelled` |
+| `review_started_at/_by`, `reviewed_at/_by`, `reviewed_by_name` | | |
+| `correction_reason` | text null | CHECK required exactly when `correction_requested` |
+
+Trigger `document_request_submissions_guard`: no DELETE; submitted facts never change; final decisions (`approved`,
+`correction_requested`, `cancelled`) cannot be changed.
+
+Additive change to an existing table: `documents` gained the UNIQUE constraint `(id, matter_id)` (composite FK target).
+
 ## Seed data
 
 `DemoWorkspaceSeeder` (development only, idempotent — keyed on `reference_number`, `matter_number`, `(matter_id, title)`,
@@ -247,8 +316,6 @@ seeding time. Emails use reserved `example.*` domains and `555-01xx` phone numbe
 
 | Table | Phase | Key columns & constraints |
 | --- | --- | --- |
-| `document_requests` | 4 | `matter_id`, `client_id`, `title`, `instructions`, `status` (`open, submitted, changes_requested, accepted, cancelled`), `due_at`, `fulfilled_document_id` |
-| `secure_access_links` | 4 | `token_hash` char(64) **unique** (SHA-256 of a 256-bit random token; plaintext never stored), `purpose` (`upload_document, sign_document`), `linkable_type/id` (the one resource it unlocks), `expires_at` NOT NULL, `revoked_at`, `max_uses`, `use_count`, `last_used_at`, `created_by` |
 | `signing_requests` | 5 | `document_version_id` FK (the exact PDF signed), `matter_id`, **one signer** (`signer_name`, `signer_email`, optional `client_id`), `signer_type` (`admin, client`), `status` (`sent, viewed, started, signed, revoked, expired`), `sent_at, viewed_at, started_at, signed_at`, `signed_document_version_id` FK, `access_link_id`; partial unique index preventing two active requests for the same version |
 | `signature_events` | 5–6 | `signing_request_id`, `event` (sent/viewed/started/signed/revoked), `occurred_at`, `ip_address`, `user_agent`, `metadata` jsonb — append-only |
 | `notifications` | 6 | Laravel's notifications table (`notifiable` morph, `data` jsonb, `read_at`) for admin alerts |
