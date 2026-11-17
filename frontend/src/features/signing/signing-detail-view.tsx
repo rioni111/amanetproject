@@ -114,10 +114,12 @@ function SigningWorkspace({ request, links, evidence }: { request: SigningReques
               Sign now
             </Button>
           ) : null}
-          <Button variant="secondary" onClick={() => setConfirm("cancel")} disabled={!request.allowed_actions.cancel}>
-            <Ban aria-hidden />
-            Cancel request
-          </Button>
+          {request.allowed_actions.cancel ? (
+            <Button variant="secondary" onClick={() => setConfirm("cancel")}>
+              <Ban aria-hidden />
+              Cancel request
+            </Button>
+          ) : null}
         </div>
       </header>
 
