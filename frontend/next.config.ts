@@ -47,6 +47,13 @@ const nextConfig: NextConfig = {
       { source: "/:path*", headers: securityHeaders },
       // Public client upload page: never leak its URL through Referer, never index it.
       {
+        source: "/client-sign",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
+        ],
+      },
+      {
         source: "/client-upload",
         headers: [
           { key: "Referrer-Policy", value: "no-referrer" },

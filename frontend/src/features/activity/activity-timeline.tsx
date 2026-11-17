@@ -25,6 +25,7 @@ import {
   ListPlus,
   Loader2,
   NotebookPen,
+  PenLine,
   PencilLine,
   RotateCcw,
   Trash2,
@@ -38,8 +39,8 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
 import { formatDate, formatTime } from "@/lib/utils/format";
-import { MATTER_STATUS_LABELS, PRIORITY_LABELS, REQUEST_STATUS_LABELS } from "@/lib/utils/labels";
-import type { ActivityEvent, DocumentRequestStatus, MatterStatus, Paginated, Priority } from "@/types/api";
+import { MATTER_STATUS_LABELS, PRIORITY_LABELS, REQUEST_STATUS_LABELS, SIGNING_STATUS_LABELS } from "@/lib/utils/labels";
+import type { ActivityEvent, DocumentRequestStatus, MatterStatus, Paginated, Priority, SigningStatus } from "@/types/api";
 
 /** Human labels and icons per event type — raw codes are never shown. */
 const EVENT_META: Record<string, { label: string; icon: LucideIcon; tone: string }> = {
@@ -74,6 +75,16 @@ const EVENT_META: Record<string, { label: string; icon: LucideIcon; tone: string
   "document.review_started": { label: "Review started", icon: Eye, tone: "text-info bg-info-soft" },
   "document.approved": { label: "Document approved", icon: FileCheck2, tone: "text-primary bg-primary-soft" },
   "document.correction_requested": { label: "Correction requested", icon: FileWarning, tone: "text-warning bg-warning-soft" },
+  "signing.requested": { label: "Signature requested", icon: PenLine, tone: "text-info bg-info-soft" },
+  "signing.link_created": { label: "Signing link generated", icon: Link2, tone: "text-info bg-info-soft" },
+  "signing.link_rotated": { label: "Signing link replaced", icon: RefreshCw, tone: "text-info bg-info-soft" },
+  "signing.link_revoked": { label: "Signing link revoked", icon: Link2Off, tone: "text-muted-foreground bg-surface-muted" },
+  "signing.invitation_shared": { label: "Signing invitation shared", icon: Send, tone: "text-info bg-info-soft" },
+  "signing.viewed": { label: "Document viewed for signing", icon: Eye, tone: "text-info bg-info-soft" },
+  "signing.started": { label: "Signing started", icon: PenLine, tone: "text-warning bg-warning-soft" },
+  "signing.completed": { label: "Document signed", icon: FileCheck2, tone: "text-primary bg-primary-soft" },
+  "signing.cancelled": { label: "Signing request cancelled", icon: Ban, tone: "text-muted-foreground bg-surface-muted" },
+  "document.signed": { label: "Signed PDF stored", icon: FileStack, tone: "text-primary bg-primary-soft" },
 };
 const FALLBACK = { label: "Activity", icon: CircleDot, tone: "text-muted-foreground bg-surface-muted" };
 
@@ -82,6 +93,9 @@ function transition(event: ActivityEvent): string | null {
   if (!from || !to) return null;
   if (event.event_type === "matter.priority_changed") {
     return `${PRIORITY_LABELS[from as Priority] ?? from} → ${PRIORITY_LABELS[to as Priority] ?? to}`;
+  }
+  if (event.metadata.signing_request_id !== undefined && from in SIGNING_STATUS_LABELS && to in SIGNING_STATUS_LABELS) {
+    return `${SIGNING_STATUS_LABELS[from as SigningStatus]} → ${SIGNING_STATUS_LABELS[to as SigningStatus]}`;
   }
   if (event.metadata.request_id !== undefined && from in REQUEST_STATUS_LABELS && to in REQUEST_STATUS_LABELS) {
     return `${REQUEST_STATUS_LABELS[from as DocumentRequestStatus]} → ${REQUEST_STATUS_LABELS[to as DocumentRequestStatus]}`;

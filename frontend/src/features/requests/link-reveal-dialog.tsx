@@ -18,11 +18,13 @@ export function LinkRevealDialog({
   onClose,
   title = "Secure upload link",
   intro,
+  purpose = "upload",
 }: {
   link: IssuedLink | null;
   onClose: () => void;
   title?: string;
   intro?: React.ReactNode;
+  purpose?: "upload" | "signing";
 }) {
   return (
     <Dialog open={link !== null} onOpenChange={(open) => (!open ? onClose() : undefined)}>
@@ -30,7 +32,7 @@ export function LinkRevealDialog({
         title={title}
         description="Share this link with the client yourself (for example by email or your client portal). It is shown only now."
       >
-        {link ? <LinkBody key={link.id} link={link} intro={intro} /> : null}
+        {link ? <LinkBody key={link.id} link={link} intro={intro} purpose={purpose} /> : null}
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="secondary">Done</Button>
@@ -42,7 +44,7 @@ export function LinkRevealDialog({
 }
 
 /** Keyed by link id, so the copy status starts fresh for every newly issued link. */
-function LinkBody({ link, intro }: { link: IssuedLink; intro?: React.ReactNode }) {
+function LinkBody({ link, intro, purpose }: { link: IssuedLink; intro?: React.ReactNode; purpose: "upload" | "signing" }) {
   const [copied, setCopied] = React.useState<"copied" | "failed" | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -62,7 +64,7 @@ function LinkBody({ link, intro }: { link: IssuedLink; intro?: React.ReactNode }
       {intro}
       <div className="flex flex-col gap-2">
         <label htmlFor="issued-link-url" className="text-[13px] font-medium text-foreground">
-          Upload link
+          {purpose === "signing" ? "Signing link" : "Upload link"}
         </label>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
@@ -86,14 +88,16 @@ function LinkBody({ link, intro }: { link: IssuedLink; intro?: React.ReactNode }
             ? "Link copied to the clipboard."
             : copied === "failed"
               ? "Copying is not available here — the link is selected; press Ctrl+C to copy it."
-              : `Valid until ${formatDateTime(link.expires_at)} · one upload only.`}
+              : `Valid until ${formatDateTime(link.expires_at)} · ${purpose === "signing" ? "one signature only" : "one upload only"}.`}
         </p>
       </div>
 
       <div className="flex items-start gap-2.5 rounded-lg border border-border bg-surface-muted/60 px-3.5 py-3 text-[13px] text-muted-foreground">
         <KeyRound aria-hidden className="mt-0.5 size-4 shrink-0 text-primary" />
         <span>
-          Anyone with this link can upload one PDF for this request only — it gives no access to the matter, other documents or notes. The
+          {purpose === "signing"
+            ? "Anyone with this link can view and sign this one document only — it gives no access to the matter, other documents or notes. The "
+            : "Anyone with this link can upload one PDF for this request only — it gives no access to the matter, other documents or notes. The "}
           firm stores only a fingerprint of it, so it cannot be shown again: if it is lost, generate a replacement (the old link then stops
           working).
         </span>
