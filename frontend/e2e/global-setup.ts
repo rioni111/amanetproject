@@ -2,7 +2,8 @@ import { execSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import path from "node:path";
 
-import { E2E_DATABASE, E2E_DOCUMENTS_DIR, FRONTEND_URL, SESSION_COOKIE, assertDisposableDatabase } from "./env";
+import { E2E_DATABASE, E2E_DOCUMENTS_DIR, E2E_MAIL_UI_URL, FRONTEND_URL, SESSION_COOKIE, assertDisposableDatabase } from "./env";
+import { clearE2eInbox } from "./mailpit";
 
 /**
  * Resets the DISPOSABLE end-to-end database to the documented demo workspace before every run, so
@@ -22,6 +23,12 @@ export default async function globalSetup() {
     if (!/^e2e-[a-z0-9-]+$/.test(E2E_DOCUMENTS_DIR)) throw new Error(`Refusing to clear "${E2E_DOCUMENTS_DIR}".`);
     rmSync(path.resolve(__dirname, "../../backend/storage/app/private", E2E_DOCUMENTS_DIR), { recursive: true, force: true });
   }
+  // Phase 6: the isolated E2E inbox must be running, and every run starts with it empty.
+  try {
+    await clearE2eInbox();
+  } catch {
+    throw new Error(`The E2E Mailpit is not reachable at ${E2E_MAIL_UI_URL}. Start it with: docker compose up -d --pull never mailpit-e2e`);
+  }
   await warmUp();
 }
 
@@ -31,7 +38,7 @@ export default async function globalSetup() {
  * pass; the API still rejects it, so nothing is accessed). Failures are ignored.
  */
 async function warmUp() {
-  const routes = ["/login", "/dashboard", "/matters", "/clients", "/documents", "/matters/1", "/clients/1", "/matters/1/documents/1", "/document-requests", "/matters/1/requests/1", "/client-upload", "/signatures", "/matters/1/signatures/1", "/client-sign"];
+  const routes = ["/login", "/dashboard", "/matters", "/clients", "/documents", "/matters/1", "/clients/1", "/matters/1/documents/1", "/document-requests", "/matters/1/requests/1", "/client-upload", "/signatures", "/matters/1/signatures/1", "/client-sign", "/notifications"];
   for (const route of routes) {
     try {
       await fetch(`${FRONTEND_URL}${route}`, { headers: { cookie: `${SESSION_COOKIE}=warm-up` }, signal: AbortSignal.timeout(120_000) });

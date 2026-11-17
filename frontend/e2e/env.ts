@@ -20,6 +20,16 @@ export const SESSION_COOKIE = "lexora_e2e_session";
 /** Private document storage of the E2E API: backend/storage/app/private/<this>, wiped before each run. */
 export const E2E_DOCUMENTS_DIR = "e2e-documents";
 
+/**
+ * Phase 6 — e-mail. The E2E API sends through a small test-controlled TCP relay (e2e/smtp-relay.mjs) to the
+ * ISOLATED E2E Mailpit (docker compose service mailpit-e2e). Tests read messages through Mailpit's API and
+ * can switch the relay to "down" to produce a genuine SMTP connection failure. Never the dev inbox.
+ */
+export const E2E_MAIL_SMTP_PORT = Number(process.env.LEXORA_E2E_MAIL_SMTP_PORT ?? 1027);
+export const E2E_MAIL_UI_URL = `http://127.0.0.1:${Number(process.env.LEXORA_E2E_MAIL_UI_PORT ?? 8027)}`;
+export const E2E_SMTP_RELAY_PORT = Number(process.env.E2E_SMTP_RELAY_PORT ?? 1028);
+export const E2E_SMTP_RELAY_CONTROL = `http://127.0.0.1:${Number(process.env.E2E_SMTP_RELAY_CONTROL_PORT ?? 1029)}`;
+
 /** Refuse to reset anything that is not clearly a disposable end-to-end database. */
 export function assertDisposableDatabase(name: string): void {
   if (!/_e2e$/.test(name)) {
