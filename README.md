@@ -3,12 +3,13 @@
 A legal matter-management and document-signing platform built for the **Amanet Full Stack Engineer take-home assignment**.
 "Lexora Workspace" is the product identity used for the UI. All clients and matters are **fictional**.
 
-> **Status: Phase 5 of 7 complete** — in-house electronic PDF signing by the
-> administrator or the client (secure link, no account), on top of client document requests, the PDF library with version
+> **Status: Phase 6 of 7 complete** (branch `feature/phase-6-email-notifications`, not yet merged) — real SMTP e-mail
+> delivery of document requests, corrections and signing invitations, scheduled reminders and in-app administrator
+> notifications, on top of in-house electronic PDF signing, client document requests, the PDF library with version
 > control, and matter, client, task, note and activity management. Reports: [Phase 1](docs/PHASE_1_IMPLEMENTATION_REPORT.md) ·
 > [Phase 2](docs/PHASE_2_IMPLEMENTATION_REPORT.md) · [Phase 3](docs/PHASE_3_IMPLEMENTATION_REPORT.md) ·
 > [Phase 4](docs/PHASE_4_IMPLEMENTATION_REPORT.md) · [Phase 5](docs/PHASE_5_IMPLEMENTATION_REPORT.md) ·
-> roadmap in [`docs/implementation-phases.md`](docs/implementation-phases.md).
+> [Phase 6](docs/PHASE_6_IMPLEMENTATION_REPORT.md) · roadmap in [`docs/implementation-phases.md`](docs/implementation-phases.md).
 
 ---
 
@@ -24,10 +25,13 @@ A legal matter-management and document-signing platform built for the **Amanet F
 | Documents | `/documents` library and a Documents tab per matter: upload PDFs (private storage, SHA-256), preview in the app (PDF.js), download, **immutable version history** (preview/download any version), metadata edit, archive; search by title, file name, matter, client and category |
 | Client requests | Request a PDF from a matter's client through a **secure, expiring, one-use link** (256-bit token, only its hash stored; copy, replace, revoke). The client uploads on a public page **without an account**; the file arrives in the matter as a new document/version. Review: preview, approve the exact version, or request a correction (reason + fresh link → next version). `/document-requests` list and dashboard counters for pending, overdue, awaiting review, corrections and approved |
 | Signatures | **One signer per PDF.** The administrator signs in the workspace ("Sign PDF"), or a client signs through a **secure, expiring, revocable, one-time link** without an account: review the PDF, draw or type a signature, place it on any page, confirm the name and the consent statement. The server stamps the signature and an "Electronically signed by …" caption into the PDF (FPDI/FPDF, no third-party platform) and stores it as a **new immutable version**; the original never changes. Real progress Ready → Sent (after the admin confirms sharing) → Viewed → Started → Signed, an immutable evidence record (signer, consent, checksums, server time), `/signatures` list, matter Signatures tab and dashboard counters |
+| E-mail | **Real SMTP** through Laravel Mail (Mailpit locally, any SMTP provider in production): document request, correction and signing invitation e-mails (HTML + plain text) to the address the server derives from the request. A new secure link is registered only after the mail server **accepted** the message (tokens are never stored, queued or logged); a failed send is reported honestly and keeps the earlier link working. A signing request becomes **Sent** only on acceptance. E-mail history per request and matter, and dashboard figures. "Accepted by the mail server" is never presented as inbox delivery |
+| Reminders | `php artisan lexora:communications` (scheduled every 5 minutes): document reminders around the due date (or 4 and 10 days after the link without one), signing reminders, max 3 per request, 24 h apart, idempotent per slot, firm time zone; never after completion, cancellation, archiving or a manual revoke |
+| Notifications | In-app bell with unread count, recent-notifications panel and `/notifications` page (mark read / mark all read, per administrator) for client uploads, corrected uploads, client signatures, overdue requests, expired signing links and failed automatic e-mails |
 | Data integrity | Each change and its history entry in one transaction; optimistic concurrency (409 on stale edits); append-only history; immutable document versions, client submissions and signature records; database triggers and composite keys guard request/link/signing/matter consistency |
 | UI | Responsive desktop/tablet/mobile, accessible dialogs and tabs, loading/empty/error states, success toasts, WCAG 2.2 AA-minded |
 
-Planned for later phases: e-mail delivery of links, reminders and notifications (6), hardening and polish (7).
+Planned for the last phase: hardening and polish (7).
 
 ## Technology
 
@@ -43,9 +47,9 @@ Planned for later phases: e-mail delivery of links, reminders and notifications 
 amanet-legal-workspace/
 ├── backend/            Laravel API (business rules, database, auth)
 ├── frontend/           Next.js application (all UI)
-├── docs/               Architecture, data model, API conventions, phases, Phase 1 report
+├── docs/               Architecture, data model, API conventions, phases, e-mail guide, phase reports
 ├── docker/             PostgreSQL init script (creates the test database)
-└── docker-compose.yml  PostgreSQL + Mailpit
+└── docker-compose.yml  PostgreSQL + Mailpit (development) + Mailpit (isolated E2E inbox)
 ```
 
 Architecture overview: [`docs/architecture.md`](docs/architecture.md) · Data model: [`docs/data-model.md`](docs/data-model.md) ·
@@ -136,7 +140,11 @@ Open **http://localhost:3000** (use `localhost`, not `127.0.0.1` — see Trouble
 | Web app | http://localhost:3000 |
 | API | http://localhost:8000/api |
 | API health | http://localhost:8000/up |
-| Mailpit | http://localhost:8025 |
+| Mailpit (development inbox) | http://localhost:8025 (or the port set in `LEXORA_MAIL_UI_PORT`; 8026 on the verified machine) |
+
+`docker compose up -d` also starts `mailpit-e2e` (SMTP 1027, UI 8027), the inbox the end-to-end tests read. Ports are
+configurable (`LEXORA_MAIL_SMTP_PORT`, `LEXORA_MAIL_UI_PORT`, `LEXORA_E2E_MAIL_SMTP_PORT`, `LEXORA_E2E_MAIL_UI_PORT`) and
+bound to 127.0.0.1. To start only the mail containers: `docker compose up -d mailpit mailpit-e2e`.
 
 ## Demo login (development only)
 
@@ -183,8 +191,12 @@ Create the E2E database once (`setup-windows.bat` does it): `CREATE DATABASE ama
 The E2E API stores uploaded PDFs in `backend/storage/app/private/e2e-documents` (wiped by global-setup), never in the
 development document storage.
 
-Latest verified results: [Phase 5 report](docs/PHASE_5_IMPLEMENTATION_REPORT.md#18-windows-verification) (earlier
-phases: [Phase 4](docs/PHASE_4_IMPLEMENTATION_REPORT.md), [Phase 2](docs/PHASE_2_IMPLEMENTATION_REPORT.md#12-testing-results),
+The end-to-end and SMTP integration tests need the `mailpit-e2e` container (`docker compose up -d mailpit-e2e`); they send
+real SMTP to it and click the links inside the delivered messages. `verify-windows.bat` checks that it is reachable.
+
+Latest verified results: [Phase 6 report](docs/PHASE_6_IMPLEMENTATION_REPORT.md#20-windows-verification) — 236 PHPUnit
+tests and 59 Playwright tests passed (earlier phases: [Phase 5](docs/PHASE_5_IMPLEMENTATION_REPORT.md#18-windows-verification),
+[Phase 4](docs/PHASE_4_IMPLEMENTATION_REPORT.md), [Phase 2](docs/PHASE_2_IMPLEMENTATION_REPORT.md#12-testing-results),
 [Phase 1](docs/PHASE_1_IMPLEMENTATION_REPORT.md#6-functional-verification)).
 
 ## Troubleshooting
@@ -212,7 +224,7 @@ phases: [Phase 4](docs/PHASE_4_IMPLEMENTATION_REPORT.md), [Phase 2](docs/PHASE_2
 ## Client document requests (Phase 4)
 
 - Open a matter → **Client requests** → *Request document*. Generate the upload link now or later; it is shown **once** with a
-  *Copy link* button. Send it to the client yourself — Phase 4 does **not** email links (Phase 6 will).
+  *Copy link* button to send it yourself, or use **Send e-mail** (Phase 6, below).
 - The link looks like `http://localhost:3010/client-upload#<token>`. A localhost link only works on the development machine;
   set `PUBLIC_APP_URL` (backend) to a public HTTPS hostname for real clients.
 - Defaults: links expire after `UPLOAD_LINK_EXPIRY_DAYS` (7; 1–30 selectable), allow one upload, and stop working when replaced,
@@ -226,7 +238,7 @@ phases: [Phase 4](docs/PHASE_4_IMPLEMENTATION_REPORT.md), [Phase 2](docs/PHASE_2
 - **Administrator:** open a document → **Sign PDF** → draw or type, click the page to place the signature (drag or use the arrow
   keys to adjust), tick the consent statement → *Sign document*. The signed PDF becomes the next version (`Signed` badge).
 - **Client:** matter → **Signatures** → *New signing request* (client signer, optional message, generate link now). Copy the link
-  (shown once), send it yourself, then **Mark invitation as shared** — Phase 5 never e-mails anything (Phase 6 will). The client
+  (shown once), send it yourself, then **Mark invitation as shared** — or use **Send signing invitation** (Phase 6). The client
   opens `http://localhost:3010/client-sign#<token>`, reviews the PDF, starts signing, signs; progress appears on the request page.
 - One signer per PDF: a signed version cannot be signed again, and a document has at most one open signing request. Adding a
   version or archiving the document/matter cancels an unfinished request (restoring does not revive its link).
@@ -239,6 +251,21 @@ phases: [Phase 4](docs/PHASE_4_IMPLEMENTATION_REPORT.md), [Phase 2](docs/PHASE_2
   certificate-based (PAdES/eIDAS) digital signature, and client identity is not independently verified (possession of the link
   plus the confirmed name). Whether it suffices for a given document and jurisdiction is for the firm to decide.
 
+## E-mail, reminders and notifications (Phase 6)
+
+- **Send e-mail** (request page), **E-mail correction** / the option in the correction dialog, and **Send signing invitation**
+  (signing page) send a real message over SMTP. The recipient is chosen by the server: the request's client, or the signer
+  snapshot of the signing request. Each accepted e-mail carries a **new** link and earlier links for that request stop working.
+- Results are shown honestly: *accepted by the configured mail server* (which does not prove inbox delivery), *not sent* with a
+  safe reason (server unreachable, timeout, authentication, recipient refused…), or *e-mail unavailable* (no SMTP configured —
+  Copy link still works). History cards show every attempt.
+- Reminders: run `php artisan schedule:work` in development (or `php artisan lexora:communications`, `--dry-run` to preview);
+  in production one cron entry `* * * * * php artisan schedule:run`. No queue worker is needed.
+- Notifications: the bell in the header (refreshes every 30 s) and `/notifications`.
+- Configuration (SMTP host, port, TLS, sender, reply-to, timeout, reminder rules, production checklist):
+  [docs/email-configuration.md](docs/email-configuration.md). SMTP credentials live only in `backend/.env`. In production, sending
+  is refused unless `PUBLIC_APP_URL` is a public HTTPS address.
+
 ## Known limitations
 
 - The matter form's client picker and the matters client filter list the first 100 clients alphabetically (search-as-you-type picker planned).
@@ -246,14 +273,16 @@ phases: [Phase 4](docs/PHASE_4_IMPLEMENTATION_REPORT.md), [Phase 2](docs/PHASE_2
 - Uploaded PDFs are validated structurally (type, signature, completeness, no encryption) but **not scanned for malware**.
 - The viewer does not load PDF.js's optional WebAssembly decoders, so rare JPEG 2000 / JBIG2 images may not render in the
   preview (the download is unaffected).
-- E-mail and notifications are **designed but not implemented** (Phase 6). Upload and signing links are copied and shared by the
-  administrator; nothing is e-mailed automatically.
+- E-mail status ends at **acceptance by the SMTP server**: inbox delivery, bounces and spam filtering are not tracked (no
+  provider webhooks). SPF/DKIM/DMARC for a sending domain are not configured here. Sending is synchronous (bounded by
+  `MAIL_TIMEOUT`); failed e-mails are not retried automatically, and a send interrupted by a crash is reported as "interrupted"
+  (outcome unknown). See the [Phase 6 report](docs/PHASE_6_IMPLEMENTATION_REPORT.md#25-limitations).
 - Signatures are application-level electronic signatures, not qualified/certificate-based signatures; no independent identity
   verification of clients (see the [Phase 5 report](docs/PHASE_5_IMPLEMENTATION_REPORT.md#23-legal-and-technical-limitations)).
 - Some PDFs cannot be signed (compressed cross-reference streams, forms, annotations, existing digital signatures, encryption).
 - Client uploads are not malware-scanned; client messages are plain text.
 - One role (`admin`) exists; the `admin` middleware and policies are in place for future roles.
-- Production deployment (HTTPS, secure cookies, queue workers) is configured through environment variables but not exercised.
+- Production deployment (HTTPS, secure cookies, production SMTP, cron) is configured through environment variables but not exercised.
 - `npm audit` reports moderate advisories in ESLint's transitive `minimatch` dependency (dev tooling only).
 
-See the [Phase 5 report](docs/PHASE_5_IMPLEMENTATION_REPORT.md), [Phase 4 report](docs/PHASE_4_IMPLEMENTATION_REPORT.md), [Phase 3 report](docs/PHASE_3_IMPLEMENTATION_REPORT.md), [Phase 2 report](docs/PHASE_2_IMPLEMENTATION_REPORT.md) and the [Phase 1 report](docs/PHASE_1_IMPLEMENTATION_REPORT.md) for the full list.
+See the [Phase 6 report](docs/PHASE_6_IMPLEMENTATION_REPORT.md), [Phase 5 report](docs/PHASE_5_IMPLEMENTATION_REPORT.md), [Phase 4 report](docs/PHASE_4_IMPLEMENTATION_REPORT.md), [Phase 3 report](docs/PHASE_3_IMPLEMENTATION_REPORT.md), [Phase 2 report](docs/PHASE_2_IMPLEMENTATION_REPORT.md) and the [Phase 1 report](docs/PHASE_1_IMPLEMENTATION_REPORT.md) for the full list.

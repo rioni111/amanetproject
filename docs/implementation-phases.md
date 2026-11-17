@@ -9,7 +9,7 @@ Seven-day delivery plan. ✅ = implemented and verified · 🟡 = foundation onl
 | 3 | Document Management & Version Control | ✅ Complete ([report](PHASE_3_IMPLEMENTATION_REPORT.md)) |
 | 4 | Secure Client Document Requests & Review | ✅ Complete ([report](PHASE_4_IMPLEMENTATION_REPORT.md)) |
 | 5 | Electronic Document Signing | ✅ Complete, merged into `main` ([report](PHASE_5_IMPLEMENTATION_REPORT.md)) |
-| 6 | Email, Notifications, Signing Progress & Activity | ⬜ Planned |
+| 6 | Email, Notifications, Signing Progress & Activity | ✅ Complete on `feature/phase-6-email-notifications`, not merged ([report](PHASE_6_IMPLEMENTATION_REPORT.md)) |
 | 7 | Testing, Security Hardening, UI Polish & Delivery | ⬜ Planned |
 
 ## 1. Foundation, Architecture, Database, Authentication & UI — ✅
@@ -57,7 +57,7 @@ Seven-day delivery plan. ✅ = implemented and verified · 🟡 = foundation onl
 - ✅ Review: start review, approve (exact version recorded, links revoked), request correction (reason + fresh link), history
 - ✅ Dashboard and matter counters (pending, awaiting review, corrections, overdue, approved); 13 new activity event types
 - ✅ 33 PHPUnit tests (incl. multi-process races) + 7 Playwright tests (desktop scenarios A–G, I, J and Pixel 7 scenario H)
-- ⬜ Email delivery of links is Phase 6 (links are copied by the administrator)
+- ✅ Email delivery of links added in Phase 6 (Copy link remains the manual alternative)
 
 ## 5. Electronic Document Signing — ✅
 
@@ -74,12 +74,25 @@ Seven-day delivery plan. ✅ = implemented and verified · 🟡 = foundation onl
 - ✅ `/signatures`, matter Signatures tab, request page (progress, link card, evidence), dashboard counters, 10 activity event types
 - ✅ 28 PHPUnit tests (incl. multi-process races, failure injection, every PDF compatibility refusal) + 7 Playwright tests
   (desktop scenarios A–I, K, keyboard-only L and Pixel 7 J); final Windows verification 201 PHPUnit / 53 Playwright, all passed
-- ⬜ Not a qualified/certificate-based signature; no independent identity verification; e-mail invitations are Phase 6
+- ⬜ Not a qualified/certificate-based signature; no independent identity verification (e-mail invitations added in Phase 6)
 
-## 6. Email, Notifications, Signing Progress & Activity — ⬜
+## 6. Email, Notifications, Signing Progress & Activity — ✅
 
-- Queued emails (signing invitations, upload requests, follow-ups, reminders, expiry notices) via Mailpit in development
-- E-mail delivery outcomes alongside the Phase 5 progress tracking (`delivery_channel = email`); admin notifications
+- ✅ Real SMTP through Laravel Mail (Mailpit in development, isolated `mailpit-e2e` inbox for tests, any SMTP provider in
+  production via environment variables); `MAIL_TIMEOUT`, reply-to, readiness endpoint without secrets, production HTTPS guard
+- ✅ Document request, correction, reminder and signing invitation e-mails (responsive HTML + plain text, escaped content,
+  no matter details in subjects); recipient always derived by the server
+- ✅ Synchronous send after commit with deferred link registration: the token exists only in memory and in the message; its
+  hash is stored only after SMTP acceptance; failures keep the earlier link; no queue, no token in any table or log
+- ✅ `email_deliveries` (honest statuses `sending/accepted/failed/skipped`, safe failure categories, server acceptance ID,
+  idempotency keys, one in-flight send per request, guard trigger); signing Ready → Sent only on acceptance (`email_accepted`)
+- ✅ Scheduler `lexora:communications` every 5 minutes: due-date and fallback document reminders, signing reminders, cap 3,
+  24 h cooldown, slot idempotency, firm time zone, stale-send recovery, one-time overdue and expired-link notifications
+- ✅ Administrator notifications (database channel): bell with unread count, panel, `/notifications`, per-user read state
+- ✅ E-mail history (request, signing, matter), `email.accepted` / `email.failed` activity, dashboard e-mail figures
+- ✅ 35 PHPUnit tests (incl. real SMTP integration and multi-process races) + 6 Playwright tests that click the links in
+  delivered messages; final Windows verification 236 PHPUnit / 59 Playwright, all passed
+- ⬜ No inbox-delivery/bounce tracking (needs provider webhooks); SPF/DKIM/DMARC not configured; no automatic retry
 
 ## 7. Testing, Security Hardening, UI Polish & Delivery — ⬜
 
