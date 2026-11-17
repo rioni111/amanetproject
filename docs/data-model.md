@@ -398,6 +398,31 @@ Laravel's notifications table: uuid `id`, `type`, `notifiable_type`/`notifiable_
 `created_at`. Kinds: `document_submitted, correction_submitted, document_signed, request_overdue, signing_link_expired,
 email_failed`.
 
+### `email_link_reservations` (Phase 7)
+
+The SHA-256 hash of an e-mailed token, reserved in the claim transaction **before** the SMTP submission (issue P7-001).
+**Not a link**: no index, query or resolver treats it as usable. It becomes a link only when the sending process
+registers it (`registered`), or when the client presents the token of a send whose outcome was never recorded
+(`activated`, see `EmailLinkActivationService`).
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `email_delivery_id` | FK → email_deliveries **unique** (RESTRICT) | one reservation per e-mail |
+| `purpose` | varchar(30) | `document_upload` / `document_signing`; CHECK target matches the purpose |
+| `matter_id`, `document_request_id`, `signing_request_id` | | composite FKs `(…, matter_id)` → the request **of that matter** |
+| `token_hash` | char(64) **unique** | CHECK hex-64; the token itself is never stored |
+| `expires_at` | timestamptz | the link's expiry; an expired reservation answers 410 `link_expired` |
+| `status` | varchar(20) | `pending, registered, activated, discarded, superseded`; CHECK `pending` ⇔ `resolved_at IS NULL` |
+| `resolved_at` | timestamptz null | |
+| `secure_access_link_id` | FK → secure_access_links **unique** null | set ⇔ `registered`/`activated` (CHECK) |
+
+- `discarded`: the server definitely refused the message, so the token never left the process.
+- `superseded`: any newer link for the request (e-mailed or generated) was created first.
+- Trigger `email_link_reservations_guard`: no DELETE; hash, target, purpose and expiry never change; only a `pending`
+  row can be resolved (once).
+- Indexes: `(document_request_id, status)`, `(signing_request_id, status)`.
+- Activity type `email.link_activated` records an activation on first use.
+
 ### Additive columns (Phase 6)
 
 - `document_requests.overdue_notified_at` (timestamptz null): the overdue notification is sent once.

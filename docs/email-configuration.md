@@ -124,5 +124,6 @@ Inbox delivery, bounces and spam filtering are only visible through provider web
 | "The mail server refused the recipient address" | The client's or signer's address is wrong. Correct the client record; a signing request keeps its signer snapshot, so cancel and recreate it |
 | "The mail server refused the configured sender address" | `MAIL_FROM_ADDRESS` is not allowed by the provider (verify the sender/domain there) |
 | "… accepted by the mail server moments ago. Wait a minute …" (409) | The same e-mail type was sent less than `LEXORA_EMAIL_MANUAL_COOLDOWN_SECONDS` ago |
+| "The mail server accepted the e-mail, but recording the result failed" (500 `email_unrecorded`) | The database failed right after the server accepted the message. Nothing is lost for the client: the link is activated when they first open it (Phase 7), and the history then shows "the client opened the link from this e-mail". Check the history after a few minutes before sending again; a new e-mail would replace that link |
 | Reminders never arrive | Is the scheduler running (`schedule:work` / cron)? Run `php artisan lexora:communications --dry-run` to see what is due; reminders skip closed requests, archived matters and links revoked by an administrator |
 | Playwright fails in global setup with a Mailpit message | Start the test inbox: `docker compose up -d mailpit-e2e` |

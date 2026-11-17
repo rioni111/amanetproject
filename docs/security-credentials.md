@@ -88,6 +88,12 @@ triggers in §5.
    - Before e-mailing clients, call `POST /api/communications/test-email` while signed in (API only, no button). It goes only to
      your own address.
    - If the SMTP password leaks, rotate it at the provider; nothing in the repository or database needs to change.
+9. Phase 7:
+   - Do not copy a `SESSION_SECURE_COOKIE=false` line to a server. The template leaves it unset, which means `Secure` in
+     production.
+   - Set `TRUSTED_PROXIES` to your reverse proxy, so Laravel recognises HTTPS (HSTS, secure URLs).
+   - Enable OPcache with `expose_php=Off`.
+   - The full list is in [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) §16.
 
 ## 5. When to rotate, and what to do if a real secret leaks
 

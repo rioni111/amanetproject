@@ -10,7 +10,7 @@ Seven-day delivery plan. ✅ = implemented and verified · 🟡 = foundation onl
 | 4 | Secure Client Document Requests & Review | ✅ Complete ([report](PHASE_4_IMPLEMENTATION_REPORT.md)) |
 | 5 | Electronic Document Signing | ✅ Complete, merged into `main` ([report](PHASE_5_IMPLEMENTATION_REPORT.md)) |
 | 6 | Email, Notifications, Signing Progress & Activity | ✅ Complete, merged into `main` ([report](PHASE_6_IMPLEMENTATION_REPORT.md)) |
-| 7 | Testing, Security Hardening, UI Polish & Delivery | ⬜ Planned |
+| 7 | Testing, Security Hardening, UI Polish & Delivery | ✅ Complete on `feature/phase-7-final-qa-delivery`, not merged ([report](PHASE_7_FINAL_IMPLEMENTATION_REPORT.md)) |
 
 ## 1. Foundation, Architecture, Database, Authentication & UI — ✅
 
@@ -94,7 +94,17 @@ Seven-day delivery plan. ✅ = implemented and verified · 🟡 = foundation onl
   delivered messages; final Windows verification 236 PHPUnit / 59 Playwright, all passed
 - ⬜ No inbox-delivery/bounce tracking (needs provider webhooks); SPF/DKIM/DMARC not configured; no automatic retry
 
-## 7. Testing, Security Hardening, UI Polish & Delivery — ⬜
+## 7. Testing, Security Hardening, UI Polish & Delivery — ✅
 
-- Broader test coverage, security review (headers, rate limits, token handling), accessibility audit
-- Final README, demo script, known limitations, optional hosted demo
+- ✅ Audit plan and issue register (0 × P0, 1 × P1 fixed, 7 × P2 fixed, 7 × P3: 5 fixed, 2 documented)
+- ✅ E-mailed links survive a crash or database failure after SMTP acceptance (hash reserved before sending, activation on
+  first use, honest `email_unrecorded` response)
+- ✅ Security headers on every API response, hardened web CSP/COOP/HSTS, secure-cookie template default, trusted proxies
+- ✅ Dependency audit (runtime: 0 advisories), secrets scan, legal-wording review
+- ✅ UI/UX: dialogs return focus, archived matters out of the default views, e-mail history wrapping; overflow-free at
+  320/375/1440 px
+- ✅ axe-core WCAG A/AA checks (0 violations), keyboard tests, cross-phase journeys, 320 px client flows, opt-in
+  Firefox/WebKit checks, N+1 query budget test, performance measurements on 1,000+ matters
+- ✅ Demo documents, requests and signatures; demo walkthrough, deployment guide, security audit, QA report, delivery
+  checklist, final report
+- ⬜ Not done: hosted demo; production deployment; malware scanning; provider webhooks; qualified signatures
