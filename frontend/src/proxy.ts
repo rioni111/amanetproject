@@ -18,5 +18,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/matters/:path*", "/clients/:path*", "/documents/:path*"],
+  // /client-upload is deliberately NOT listed: it is the public, passwordless client page.
+  matcher: ["/dashboard/:path*", "/matters/:path*", "/clients/:path*", "/documents/:path*", "/document-requests/:path*"],
 };

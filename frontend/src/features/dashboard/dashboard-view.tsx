@@ -3,6 +3,7 @@
 import { Briefcase, CalendarClock, ListChecks, Users } from "lucide-react";
 
 import { RecentMatters } from "@/components/dashboard/recent-matters";
+import { RequestsSummary } from "@/components/dashboard/requests-summary";
 import { StatCard, StatCardSkeleton } from "@/components/dashboard/stat-card";
 import { StatusBreakdown } from "@/components/dashboard/status-breakdown";
 import { UpcomingDeadlines } from "@/components/dashboard/upcoming-deadlines";
@@ -101,6 +102,8 @@ export function DashboardView() {
           ) : (
             <StatusBreakdown breakdown={data.status_breakdown} total={data.stats.total_matters} />
           )}
+
+          {isPending ? null : <RequestsSummary stats={data.stats} />}
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]">
             {isPending ? (

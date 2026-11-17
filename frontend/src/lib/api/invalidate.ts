@@ -11,6 +11,8 @@ export function invalidateWorkspace(queryClient: QueryClient, options: { matterI
   void queryClient.invalidateQueries({ queryKey: ["clients"] });
   void queryClient.invalidateQueries({ queryKey: ["documents"] });
   void queryClient.invalidateQueries({ queryKey: ["document"] });
+  void queryClient.invalidateQueries({ queryKey: ["document-requests"] });
+  void queryClient.invalidateQueries({ queryKey: ["document-request"] });
   if (options.matterId) {
     void queryClient.invalidateQueries({ queryKey: ["matter", options.matterId] });
   }

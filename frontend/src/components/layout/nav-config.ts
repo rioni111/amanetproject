@@ -13,6 +13,7 @@ export const PRIMARY_NAV: NavItem[] = [
   { title: "Matters", href: "/matters", icon: Briefcase, description: "All legal matters" },
   { title: "Clients", href: "/clients", icon: Users, description: "Individuals and organizations" },
   { title: "Documents", href: "/documents", icon: FileText, description: "PDF library and versions" },
+  { title: "Client requests", href: "/document-requests", icon: Inbox, description: "Documents requested from clients" },
 ];
 
 /**
@@ -20,7 +21,6 @@ export const PRIMARY_NAV: NavItem[] = [
  * items so the navigation structure is stable without advertising unbuilt features.
  */
 export const UPCOMING_NAV: { title: string; icon: LucideIcon; phase: number }[] = [
-  { title: "Client requests", icon: Inbox, phase: 4 },
   { title: "Signatures", icon: PenLine, phase: 5 },
 ];
 

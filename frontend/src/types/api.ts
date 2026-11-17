@@ -73,6 +73,7 @@ export interface Matter {
   tasks_count?: number;
   notes_count?: number;
   documents_count?: number;
+  requests?: MatterRequestCounts;
 }
 
 export interface Task {
@@ -164,6 +165,127 @@ export interface LegalDocument {
   lock_version: number;
 }
 
+export const DOCUMENT_REQUEST_STATUSES = ["pending", "submitted", "under_review", "correction_requested", "approved", "cancelled"] as const;
+export type DocumentRequestStatus = (typeof DOCUMENT_REQUEST_STATUSES)[number];
+export type DocumentRequestStatusGroup = "open" | "awaiting_client" | "awaiting_review";
+export type SubmissionReviewStatus = "pending" | "in_review" | "approved" | "correction_requested" | "cancelled";
+export type SecureLinkState = "active" | "expired" | "revoked" | "used";
+
+/** Link status for administrators. Tokens and hashes are never part of any API response. */
+export interface SecureLink {
+  id: number;
+  purpose: "document_upload" | "document_signing";
+  state: SecureLinkState;
+  expires_at: string;
+  revoked_at: string | null;
+  revocation_reason: string | null;
+  revocation_label: string | null;
+  consumed_at: string | null;
+  first_opened_at: string | null;
+  created_by?: { id: number; name: string } | null;
+  created_at: string | null;
+}
+
+/** Returned exactly once, by the action that created the link. Never stored or cached by the app. */
+export interface IssuedLink {
+  id: number;
+  url: string;
+  expires_at: string;
+  is_local_url: boolean;
+  shown_once: true;
+}
+
+export interface DocumentRequestSubmission {
+  id: number;
+  document_request_id: number;
+  submission_number: number;
+  document_id: number;
+  version?: DocumentVersion;
+  client_message: string | null;
+  submitted_by: string;
+  submitted_at: string;
+  review_status: SubmissionReviewStatus;
+  review_status_label: string;
+  review_started_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by: { id: number | null; name: string } | null;
+  correction_reason: string | null;
+}
+
+export interface DocumentRequest {
+  id: number;
+  matter_id: number;
+  title: string;
+  instructions: string;
+  requested_category: DocumentCategory;
+  requested_category_label: string;
+  status: DocumentRequestStatus;
+  status_label: string;
+  is_open: boolean;
+  is_overdue: boolean;
+  due_at: string | null;
+  due_date: string | null;
+  document_id: number | null;
+  submissions_count: number;
+  last_submitted_at: string | null;
+  review_started_at: string | null;
+  approved_at: string | null;
+  approved_version?: { id: number; version_number: number; label: string } | null;
+  reviewed_by?: { id: number; name: string } | null;
+  cancelled_at: string | null;
+  client?: { id: number; name: string };
+  matter?: { id: number; matter_number: string; title: string; status: MatterStatus };
+  document?: { id: number; title: string; status: DocumentStatus; versions_count: number } | null;
+  latest_submission?: DocumentRequestSubmission | null;
+  active_link?: SecureLink | null;
+  created_by?: { id: number; name: string } | null;
+  created_at: string | null;
+  updated_at: string | null;
+  lock_version: number;
+  allowed_actions: {
+    edit: boolean;
+    issue_link: boolean;
+    rotate_link: boolean;
+    revoke_link: boolean;
+    start_review: boolean;
+    approve: boolean;
+    request_correction: boolean;
+    cancel: boolean;
+  };
+}
+
+export interface MatterRequestCounts {
+  open: number;
+  pending: number;
+  awaiting_review: number;
+  correction_requested: number;
+  approved: number;
+  overdue: number;
+}
+
+/** What the public upload page receives for a valid link — nothing else about the firm's records. */
+export interface PublicUploadRequest {
+  firm_name: string;
+  title: string;
+  instructions: string;
+  category: DocumentCategory;
+  category_label: string;
+  due_date: string | null;
+  is_overdue: boolean;
+  expires_at: string;
+  max_file_mb: number;
+  is_correction: boolean;
+  correction: { reason: string; requested_at: string | null } | null;
+}
+
+export interface PublicSubmissionResult {
+  submission_number: number;
+  submitted_at: string;
+  original_filename: string;
+  file_size: number;
+  is_correction: boolean;
+}
+
 export interface PaginationMeta {
   current_page: number;
   last_page: number;
@@ -191,6 +313,12 @@ export interface DashboardStats {
   overdue_matters: number;
   open_tasks: number;
   overdue_tasks: number;
+  requests_outstanding: number;
+  requests_pending: number;
+  requests_awaiting_review: number;
+  requests_correction: number;
+  requests_overdue: number;
+  requests_approved: number;
 }
 
 export interface DashboardSummary {

@@ -1,4 +1,37 @@
-import type { ClientType, DocumentCategory, MatterStatus, Priority, TaskStatus } from "@/types/api";
+import type {
+  ClientType,
+  DocumentCategory,
+  DocumentRequestStatus,
+  MatterStatus,
+  Priority,
+  SecureLinkState,
+  SubmissionReviewStatus,
+  TaskStatus,
+} from "@/types/api";
+
+export const REQUEST_STATUS_LABELS: Record<DocumentRequestStatus, string> = {
+  pending: "Awaiting client",
+  submitted: "Submitted",
+  under_review: "Under review",
+  correction_requested: "Correction requested",
+  approved: "Approved",
+  cancelled: "Cancelled",
+};
+
+export const SUBMISSION_REVIEW_LABELS: Record<SubmissionReviewStatus, string> = {
+  pending: "Awaiting review",
+  in_review: "In review",
+  approved: "Approved",
+  correction_requested: "Correction requested",
+  cancelled: "Not reviewed (request cancelled)",
+};
+
+export const LINK_STATE_LABELS: Record<SecureLinkState, string> = {
+  active: "Active",
+  expired: "Expired",
+  revoked: "Revoked",
+  used: "Used",
+};
 
 export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
   contracts: "Contracts",
