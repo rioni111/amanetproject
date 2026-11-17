@@ -80,7 +80,8 @@ function ClientWorkspace({ client }: { client: Client }) {
   const [creatingMatter, setCreatingMatter] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [page, setPage] = React.useState(1);
-  const filters: MatterFilters = { search: "", status: "", priority: "", deadline: "", client_id: client.id, sort: "updated_at", page };
+  // A client's record lists every matter, archived ones included (they also block deleting the client).
+  const filters: MatterFilters = { search: "", status: "all", priority: "", deadline: "", client_id: client.id, sort: "updated_at", page };
   const matters = useMatters(filters, 8);
   const canDelete = (client.matters_count ?? 0) === 0;
 

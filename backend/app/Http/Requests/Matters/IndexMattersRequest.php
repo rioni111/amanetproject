@@ -22,7 +22,8 @@ class IndexMattersRequest extends FormRequest
     {
         return [
             'search' => ['nullable', 'string', 'max:100'],
-            'status' => ['nullable', Rule::in([...MatterStatus::values(), 'active'])],
+            // 'active' = open, in progress, on hold; 'current' (Phase 7) = everything except archived.
+            'status' => ['nullable', Rule::in([...MatterStatus::values(), 'active', 'current'])],
             'priority' => ['nullable', Rule::enum(Priority::class)],
             'client_id' => ['nullable', 'integer', 'min:1'],
             'matter_type' => ['nullable', 'string', 'max:100'],

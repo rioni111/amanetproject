@@ -112,8 +112,10 @@ class DashboardService
                 'label' => $status->label(),
                 'count' => (int) ($statusCounts[$status->value] ?? 0),
             ], MatterStatus::cases()),
+            // Phase 7: an operational overview — archived (read-only) matters are not "recent work".
             'recent_matters' => Matter::query()
                 ->with('client:id,name,client_type')
+                ->where('status', '<>', MatterStatus::Archived->value)
                 ->latest('updated_at')
                 ->orderByDesc('id')
                 ->limit((int) config('lexora.dashboard.recent_matters_limit', 6))
