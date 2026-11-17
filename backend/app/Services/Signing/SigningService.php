@@ -5,6 +5,7 @@ namespace App\Services\Signing;
 use App\Enums\ActivityEventType;
 use App\Enums\DocumentOrigin;
 use App\Enums\DocumentVersionKind;
+use App\Enums\NotificationKind;
 use App\Enums\SignerType;
 use App\Enums\SigningStatus;
 use App\Models\Document;
@@ -15,6 +16,7 @@ use App\Models\SignatureRecord;
 use App\Models\SigningRequest;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\Communications\AdminNotifier;
 use App\Services\Documents\DocumentService;
 use App\Services\Documents\DocumentStorage;
 use App\Support\SigningConsent;
@@ -296,6 +298,10 @@ class SigningService
                     if ($signerType === SignerType::Client) {
                         $this->activity->recordClient($matter, ActivityEventType::SigningCompleted, $completed, $request->signer_name, $request->id, $request, [...$metadata, 'source' => 'secure_link']);
                         $this->activity->recordClient($matter, ActivityEventType::DocumentSigned, $added, $request->signer_name, $request->id, $version, $metadata);
+                        // Phase 6: in the same transaction as the signature it reports.
+                        app(AdminNotifier::class)->notify(NotificationKind::DocumentSigned, $matter,
+                            "{$request->signer_name} signed \"{$document->title}\". The signed PDF is stored as {$version->label()}.",
+                            "/matters/{$matter->id}/signatures/{$request->id}", ['signing_request_id' => $request->id, 'document_id' => $document->id]);
                     } else {
                         $this->activity->record($matter, ActivityEventType::SigningCompleted, $completed, $actor, $request, $metadata);
                         $this->activity->record($matter, ActivityEventType::DocumentSigned, $added, $actor, $version, $metadata);

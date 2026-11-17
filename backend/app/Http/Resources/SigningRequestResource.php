@@ -68,6 +68,8 @@ class SigningRequestResource extends JsonResource
                 'mark_shared' => $active && $client && $this->status === SigningStatus::Ready && $usable !== null && $usable->isUsable(),
                 'cancel' => $active,
                 'admin_sign' => $active && ! $client && $this->signer_user_id === $request->user()?->id,
+                // Phase 6: e-mail the invitation to the signer e-mail snapshot (null address: not possible).
+                'send_email' => $active && $client && filled($this->signer_email),
             ],
         ];
     }

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ClientController;
+use App\Http\Controllers\Api\CommunicationController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\DocumentFileController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\Api\MatterController;
 use App\Http\Controllers\Api\MatterLifecycleController;
 use App\Http\Controllers\Api\MatterNoteController;
 use App\Http\Controllers\Api\MatterTaskController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PublicDocumentUploadController;
 use App\Http\Controllers\Api\PublicSigningController;
 use App\Http\Controllers\Api\SigningRequestController;
@@ -114,6 +116,25 @@ Route::middleware(['auth:sanctum', 'admin', 'throttle:api'])->group(function () 
         Route::post('documents/{document}/sign', [SigningRequestController::class, 'signDocument'])->name('documents.sign');
         Route::get('documents/{document}/versions/{version}/signing-eligibility', [SigningRequestController::class, 'eligibility'])->name('documents.versions.signing-eligibility');
     });
+
+    // Phase 6 — e-mail communication. Recipients are always decided by the server (request client / signer).
+    Route::scopeBindings()->prefix('matters/{matter}')->whereNumber(['matter', 'documentRequest', 'signingRequest'])->name('matters.')->group(function () {
+        Route::post('document-requests/{documentRequest}/send-email', [CommunicationController::class, 'sendDocumentRequest'])
+            ->middleware('throttle:communications')->name('document-requests.send-email');
+        Route::get('document-requests/{documentRequest}/communications', [CommunicationController::class, 'documentRequestHistory'])->name('document-requests.communications');
+        Route::post('signing-requests/{signingRequest}/send-email', [CommunicationController::class, 'sendSigningInvitation'])
+            ->middleware('throttle:communications')->name('signing-requests.send-email');
+        Route::get('signing-requests/{signingRequest}/communications', [CommunicationController::class, 'signingHistory'])->name('signing-requests.communications');
+        Route::get('communications', [CommunicationController::class, 'matterHistory'])->name('communications');
+    });
+    Route::get('communications/status', [CommunicationController::class, 'status'])->name('communications.status');
+    Route::post('communications/test-email', [CommunicationController::class, 'testEmail'])->middleware('throttle:test-email')->name('communications.test-email');
+
+    // Phase 6 — the signed-in administrator's own notifications.
+    Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount'])->name('notifications.unread-count');
+    Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
+    Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead'])->whereUuid('notification')->name('notifications.read');
 
     // Workspace-wide signing requests.
     Route::get('signing-requests', [SigningRequestController::class, 'library'])->name('signing-requests.index');

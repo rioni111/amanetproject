@@ -308,6 +308,63 @@ Errors: `{ message, code }` — 404 `link_invalid` (unknown, malformed, wrong pu
 `link_expired` / `already_signed` / `request_cancelled` / `request_unavailable` (archived), 409 (step order), 422 validation or
 `pdf_unsupported`, 429 `too_many_attempts`.
 
+## Endpoints (Phase 6 — e-mail and notifications)
+
+### E-mail (session + CSRF)
+
+| Method | Path | Body / notes | Success |
+| --- | --- | --- | --- |
+| GET | `/api/communications/status` | transport readiness: `available`, `reason`, `mailer`, `transport`, `host`, `port`, `encryption`, `authenticated` (bool), `from_address`, `from_name`, `reply_to`, `public_app_url`, `public_url_https`, `public_url_local`, `mail_ui_url` — never the username or password | 200 `{ data }` |
+| POST | `/api/communications/test-email` | no body; always to the signed-in administrator's own address; `throttle:test-email` (3 per 10 min) | 201 / 502 |
+| POST | `/api/matters/{matter}/document-requests/{documentRequest}/send-email` | `idempotency_key` (uuid, one per dialog), `link_expires_in_days` (1–30). `throttle:communications` (20/min per administrator) | 201 / 200 replay / 502 |
+| GET | `…/document-requests/{documentRequest}/communications` | 100 newest | 200 `{ data: EmailDelivery[] }` |
+| POST | `/api/matters/{matter}/signing-requests/{signingRequest}/send-email` | same body; client signer only; Ready → Sent on acceptance | 201 / 200 / 502 |
+| GET | `…/signing-requests/{signingRequest}/communications` | 100 newest | 200 `{ data: EmailDelivery[] }` |
+| GET | `/api/matters/{matter}/communications` | `per_page` (≤ 100), `page` | 200 paginated `EmailDelivery` |
+
+- **Server-owned values.** Recipient, subject, sender, status and every other delivery field (`to`, `cc`, `bcc`, `recipient*`,
+  `email`, `from`, `reply_to`, `subject`, `body`, `html`, `status`, `token`, `url`, `link`, ids…) are **prohibited**, giving 422
+  rather than being ignored. E-mails go only to the request's client or the signing request's signer snapshot.
+- **Outcome responses** carry `{ data: EmailDelivery, message }`:
+  - 201: `message` "E-mail accepted by the configured mail server.";
+  - 200: `replayed: true` (same key);
+  - 502: `{ code: "email_failed" }` with a safe reason;
+  - 503: `{ code: "email_unavailable" }` (not configured);
+  - 409: closed request, waiting for review, already signed, cooldown, or a send already in progress;
+  - 422: no valid recipient address.
+- **Correction e-mail.** `POST …/document-requests/{r}/request-correction` accepts `send_email: true`. The decision is
+  committed first, and the response adds `email: { status: accepted | failed | not_sent, delivery, message }` (still 200 when
+  the e-mail fails).
+- **EmailDelivery** fields:
+  - `id, matter_id, document_request_id, signing_request_id`;
+  - `communication_type(+_label), initiated_by, reminder_slot`;
+  - `recipient_email, recipient_name, subject`;
+  - `status(+_label), attempt_count, last_attempt_at, accepted_at, failed_at`;
+  - `failure_category, failure_message, provider_message_id`;
+  - `link {id, state, expires_at}, created_by {id, name}, created_at`.
+  - It never includes the link URL, token or body.
+- `allowed_actions` gained `send_email` on document and signing requests. Signing `delivery_status` can be `email_accepted`.
+  Dashboard `stats` gained `emails_sending, emails_accepted_30d, emails_failed_30d`.
+
+### Notifications (session + CSRF; always the signed-in administrator's own)
+
+| Method | Path | Notes | Success |
+| --- | --- | --- | --- |
+| GET | `/api/notifications` | `unread` (bool), `per_page` (≤ 50), `page`; newest first | 200 `{ data: Notification[], meta: { current_page, last_page, per_page, total, from, to, unread_count } }` |
+| GET | `/api/notifications/unread-count` | | 200 `{ data: { unread_count } }` |
+| POST | `/api/notifications/{id}/read` | uuid; another user's id → 404 | 200 `{ data, meta: { unread_count } }` |
+| POST | `/api/notifications/read-all` | | 200 `{ data: { marked, unread_count: 0 } }` |
+
+**Notification** fields are `id, kind, title, body, href, matter {id, matter_number, title} | null, read_at, created_at`.
+`href` is always an internal path; anything else becomes `/dashboard`. Client upload and signing tokens are rejected on all of
+these endpoints (401).
+
+### Console
+
+- `php artisan lexora:communications [--dry-run]` runs stale-send recovery, the one-time overdue and expired-link notifications,
+  and due reminders.
+- It is scheduled every 5 minutes; run `php artisan schedule:work` in development, or `schedule:run` from cron.
+
 ## Conventions for new endpoints (Phase 2+)
 
 - Route names `resource.action`, RESTful verbs, plural nouns (`/api/matters/{matter}/tasks`).

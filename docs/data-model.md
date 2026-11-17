@@ -329,8 +329,8 @@ One designated signer for one immutable source version of one document — **one
 | `signer_name`, `signer_email` | varchar(200) / varchar(255) null | snapshot; name not blank |
 | `message` | text null | shown to the signer |
 | `status` | varchar(20) default `ready` | `ready, sent, viewed, started, signed, cancelled` (CHECK) |
-| `delivery_channel` | varchar(20) null | `manual` (Phase 5), `email` reserved for Phase 6 |
-| `delivery_status` | varchar(30) default `not_shared` | `not_shared, shared_manually`; CHECK consistent with `sent_at`/channel |
+| `delivery_channel` | varchar(20) null | `manual` (Phase 5), `email` (Phase 6) |
+| `delivery_status` | varchar(30) default `not_shared` | `not_shared, shared_manually, email_accepted` (Phase 6); CHECK consistent with `sent_at`; CHECK `signing_requests_delivery_channel_status` (Phase 6): `shared_manually` ⇔ channel `manual`, `email_accepted` ⇔ channel `email` |
 | `sent_at`, `viewed_at`, `started_at`, `signed_at`, `cancelled_at` | timestamptz null | server time; CHECK each status has its timestamp, and sent ≤ viewed ≤ started ≤ signed |
 | `cancellation_reason`, `cancelled_by` | varchar(30) null / FK users (SET NULL) | `manual, matter_archived, document_archived, source_superseded`; `(status='cancelled') = (cancelled_at AND reason NOT NULL)` |
 | `signed_document_version_id` | bigint unique null | composite FK → `document_versions (id, document_id)`; `(status='signed') = (signed_at AND signed version NOT NULL)`; differs from the source |
@@ -362,6 +362,49 @@ Triggers: `signing_requests_insert_guard` (source version must be `kind = upload
 Trigger `signature_records_no_update_delete` rejects every `UPDATE`/`DELETE`. Signature strokes and typed text are not stored as
 data (they exist only as drawing operations inside the signed PDF).
 
+### `email_deliveries` (Phase 6)
+
+One row per e-mail attempt. It never stores the link, the token or the message body.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id`, `uuid` | bigint / uuid unique | the uuid is sent as header `X-Lexora-Delivery` |
+| `matter_id`, `client_id` | FK → matters / clients (RESTRICT) null | null only for `test` |
+| `document_request_id` | bigint null | composite FK `(document_request_id, matter_id)` → `document_requests (id, matter_id)` |
+| `signing_request_id` | bigint null | composite FK `(signing_request_id, matter_id)` → `signing_requests (id, matter_id)` |
+| `secure_access_link_id` | FK → secure_access_links **unique** null | the link this e-mail carried; set only when accepted |
+| `communication_type` | varchar(40) | `document_request, document_correction, document_request_reminder, signing_invitation, signing_reminder, test`; CHECK target matches the type |
+| `initiated_by`, `reminder_slot` | varchar(20) / varchar(80) null | `manual, automatic`; CHECK `automatic` ⇔ slot present, and automatic only for the reminder types |
+| `recipient_email`, `recipient_name`, `subject` | | snapshot; CHECK recipient contains `@` and no CR/LF |
+| `channel` | varchar(20) | `email` |
+| `status` | varchar(20) | `pending, sending, accepted, failed, cancelled, skipped` |
+| `attempt_count`, `last_attempt_at` | smallint / timestamptz | CHECK ≥ 1 unless `pending`, `skipped` or `cancelled` |
+| `accepted_at`, `failed_at`, `failure_category` | timestamptz / timestamptz / varchar(40) | CHECK `accepted` ⇔ `accepted_at`; `failed` ⇔ `failed_at` and a category (skipped rows carry a category too); category ∈ `connection, timeout, authentication, recipient_rejected, sender_rejected, configuration, invalid_recipient, interrupted, unknown, ineligible, reminder_limit` |
+| `provider_message_id` | varchar(255) null | ID returned by the SMTP server on acceptance |
+| `idempotency_key` | varchar(160) **unique** | `manual:<type>:<id>:<uuid>` or `reminder:<type>:<id>:<slot>` |
+| `created_by` | FK → users null (SET NULL) | |
+| `created_at`, `updated_at` | timestamptz | |
+
+Indexes: partial unique `email_deliveries_one_sending_per_document_request` / `…_per_signing_request` (`WHERE status =
+'sending'`), `(document_request_id, created_at)`, `(signing_request_id, created_at)`, `(matter_id, created_at)`,
+`(status, last_attempt_at)`. Trigger `email_deliveries_guard`: no DELETE; target and recipient never change; `accepted`,
+`failed`, `cancelled` and `skipped` are final.
+
+### `notifications` (Phase 6)
+
+Laravel's notifications table: uuid `id`, `type`, `notifiable_type`/`notifiable_id` (morph to `users`), `data` jsonb (`kind`,
+`title`, `body`, internal `href`, matter number/title and related ids — never links, tokens or document content), `read_at`,
+`created_at`/`updated_at` as `timestamptz(6)` (exact ordering). Indexes `(notifiable_type, notifiable_id, read_at)` and
+`created_at`. Kinds: `document_submitted, correction_submitted, document_signed, request_overdue, signing_link_expired,
+email_failed`.
+
+### Additive columns (Phase 6)
+
+- `document_requests.overdue_notified_at` (timestamptz null): the overdue notification is sent once.
+- `secure_access_links.expiry_notified_at` (timestamptz null): the expired-signing-link notification is sent once.
+- Activity event types `email.accepted` and `email.failed` (metadata: delivery id, type, `initiated_by`, slot, request ids,
+  recipient snapshot, outcome, link id — never the link itself).
+
 ## Seed data
 
 `DemoWorkspaceSeeder` (development only, idempotent — keyed on `reference_number`, `matter_number`, `(matter_id, title)`,
@@ -369,12 +412,8 @@ data (they exist only as drawing operations inside the signed PDF).
 4 deadlines within 14 days, 1 overdue), 15 tasks (11 open, 1 overdue), 6 notes and 42 activity events. Dates are relative to the
 seeding time. Emails use reserved `example.*` domains and `555-01xx` phone numbers.
 
-## Planned tables (not implemented)
+## Design notes
 
-| Table | Phase | Key columns & constraints |
-| --- | --- | --- |
-| `notifications` | 6 | Laravel's notifications table (`notifiable` morph, `data` jsonb, `read_at`) for admin alerts |
-| e-mail delivery log | 6 | per-message delivery outcome for upload/signing invitations, reminders and expiry notices (Phase 5 keeps `delivery_status` separate from signing progress for this) |
-
-The signing history planned as a separate `signature_events` table was implemented instead as progress timestamps on
+The planned `notifications` table and e-mail delivery log were implemented in Phase 6 as `notifications` and
+`email_deliveries` (above). The signing history planned as a separate `signature_events` table was implemented instead as progress timestamps on
 `signing_requests`, the immutable `signature_records` row and typed `activity_events` (Phase 5).

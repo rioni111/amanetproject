@@ -2,6 +2,7 @@
 
 import { Briefcase, CalendarClock, ListChecks, Users } from "lucide-react";
 
+import { CommunicationsSummary } from "@/components/dashboard/communications-summary";
 import { RecentMatters } from "@/components/dashboard/recent-matters";
 import { RequestsSummary } from "@/components/dashboard/requests-summary";
 import { SignaturesSummary } from "@/components/dashboard/signatures-summary";
@@ -108,6 +109,9 @@ export function DashboardView() {
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]">
               <RequestsSummary stats={data.stats} />
               <SignaturesSummary stats={data.stats} />
+              <div className="xl:col-span-2">
+                <CommunicationsSummary stats={data.stats} />
+              </div>
             </div>
           )}
 

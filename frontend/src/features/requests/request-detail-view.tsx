@@ -12,6 +12,7 @@ import {
   Link2,
   Link2Off,
   Loader2,
+  Mail,
   MessageSquareQuote,
   Pencil,
   RefreshCw,
@@ -33,6 +34,8 @@ import { Dialog, DialogClose, DialogContent, DialogFooter } from "@/components/u
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { CommunicationHistory } from "@/features/communications/communication-history";
+import { SendEmailDialog } from "@/features/communications/send-email-dialog";
 import { useMatter } from "@/features/matters/api";
 import { downloadVersion } from "@/features/documents/api";
 import { documentHref } from "@/features/documents/document-list";
@@ -99,6 +102,7 @@ function RequestWorkspace({ request, links, matter }: { request: DocumentRequest
   const toast = useToast();
   const [editing, setEditing] = React.useState(false);
   const [cancelling, setCancelling] = React.useState(false);
+  const [emailing, setEmailing] = React.useState(false);
   const [issued, setIssued] = React.useState<{ link: IssuedLink; correction: boolean } | null>(null);
   const cancel = useCancelRequest(request.matter_id, request.id);
   const archived = matter.status === "archived";
@@ -151,6 +155,12 @@ function RequestWorkspace({ request, links, matter }: { request: DocumentRequest
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
+          {request.allowed_actions.send_email ? (
+            <Button onClick={() => setEmailing(true)}>
+              <Mail aria-hidden />
+              {request.status === "correction_requested" ? "E-mail correction" : "Send e-mail"}
+            </Button>
+          ) : null}
           <Button variant="secondary" onClick={() => setEditing(true)} disabled={!request.allowed_actions.edit}>
             <Pencil aria-hidden />
             Edit
@@ -184,6 +194,7 @@ function RequestWorkspace({ request, links, matter }: { request: DocumentRequest
         <div className="flex min-w-0 flex-col gap-6">
           <ReviewCard request={request} onIssued={(link) => setIssued({ link, correction: true })} />
           <SubmissionHistory request={request} />
+          <CommunicationHistory target="document-requests" matterId={request.matter_id} id={request.id} />
         </div>
         <div className="flex min-w-0 flex-col gap-6">
           <Card>
@@ -222,6 +233,22 @@ function RequestWorkspace({ request, links, matter }: { request: DocumentRequest
       </div>
 
       <RequestFormDialog open={editing} onOpenChange={setEditing} matter={matter} request={request} />
+      <SendEmailDialog
+        open={emailing}
+        onOpenChange={setEmailing}
+        target="document-requests"
+        matterId={request.matter_id}
+        targetId={request.id}
+        title={request.status === "correction_requested" ? "E-mail the correction request" : "E-mail the document request"}
+        what={
+          request.status === "correction_requested"
+            ? "The client receives a secure link to a page that shows your correction instructions and accepts the corrected PDF."
+            : "The client receives the request details and a secure link to upload the PDF. No account is needed."
+        }
+        recipientName={request.client?.name ?? "The client"}
+        recipientEmail={request.client?.email ?? null}
+        replacesLink={links.length > 0}
+      />
       <ConfirmDialog
         open={cancelling}
         onOpenChange={setCancelling}
@@ -433,7 +460,9 @@ function CorrectionDialog({
 }) {
   const correction = useRequestCorrection(request.matter_id, request.id);
   const guard = useSubmitGuard();
+  const toast = useToast();
   const [reason, setReason] = React.useState("");
+  const [byEmail, setByEmail] = React.useState(false);
   const [validity, setValidity] = React.useState("7");
   const [error, setError] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
@@ -442,6 +471,7 @@ function CorrectionDialog({
   React.useEffect(() => {
     if (open && !wasOpen.current) {
       setReason("");
+      setByEmail(false);
       setValidity("7");
       setError(null);
       setFormError(null);
@@ -469,8 +499,14 @@ function CorrectionDialog({
           lock_version: request.lock_version,
           reason: text,
           expires_in_days: Number(validity),
+          send_email: byEmail,
         });
-        if (result.link) onIssued(result.link);
+        if (result.email) {
+          // The decision is recorded either way; the e-mail outcome is reported honestly.
+          if (result.email.status === "accepted") toast.success("Correction requested", result.email.message);
+          else toast.error("Correction requested — e-mail not sent", result.email.message);
+          onOpenChange(false);
+        } else if (result.link) onIssued(result.link);
       } catch (err) {
         if (err instanceof ApiError && err.isValidation && err.field("reason")) setError(err.field("reason") ?? null);
         else setFormError(getErrorMessage(err));
@@ -506,6 +542,24 @@ function CorrectionDialog({
                 />
               )}
             </FormField>
+            <label className="flex items-start gap-2.5 text-[13px] text-foreground" htmlFor="correction-by-email">
+              <input
+                id="correction-by-email"
+                type="checkbox"
+                className="mt-0.5 size-4 accent-[var(--primary)]"
+                checked={byEmail}
+                onChange={(e) => setByEmail(e.target.checked)}
+                disabled={correction.isPending || !request.client?.email}
+              />
+              <span>
+                <span className="font-medium">E-mail the correction request to the client</span>
+                <span className="block text-xs text-muted-foreground">
+                  {request.client?.email
+                    ? `Sent to ${request.client.email} with a new secure link. If the e-mail fails, the correction still stands and you can resend it.`
+                    : "No e-mail address is on file for this client."}
+                </span>
+              </span>
+            </label>
             <FormField id="correction-validity" label="New link valid for" className="sm:max-w-48">
               {(aria) => (
                 <Select {...aria} value={validity} onChange={(e) => setValidity(e.target.value)} disabled={correction.isPending}>
@@ -699,7 +753,7 @@ function LinkCard({ request, links, onIssued }: { request: DocumentRequest; link
         ) : null}
 
         <p className="text-xs text-subtle-foreground">
-          Links are shown once when generated and are not emailed automatically. Each link allows one PDF upload for this request only.
+          A copied link is shown once, when generated — the manual alternative to Send e-mail. Each link allows one PDF upload for this request only; a new link (copied or e-mailed) replaces the previous one.
         </p>
 
         {links.length > 0 ? (

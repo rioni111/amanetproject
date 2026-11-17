@@ -202,7 +202,7 @@ Admin (Sanctum session) ──► POST /api/matters/{m}/document-requests [issue
                               token = base64url(random_bytes(32))  (256 bits, CSPRNG)    SecureAccessLinkService
                               store SHA-256(token) only ─► secure_access_links (purpose document_upload, expires_at, max_uses 1)
                               response ONCE: { link: { url: https://<public app>/client-upload#<token> } }   (never stored/logged)
-Admin copies the URL and sends it to the client (Phase 6 will email it)
+Admin copies the URL and sends it to the client — or e-mails a fresh link through Phase 6 (section 9)
 
 Client browser (no account, no cookies) ──► /client-upload#<token>        (static page; the fragment never reaches a server)
    page reads the fragment ──► GET  /api/public/document-upload           header X-Upload-Token: <token>, credentials: omit
@@ -232,8 +232,8 @@ Admin reviews ──► start-review ─► approve (records the exact version; 
   20 failed lookups per IP → lockout. The Playwright environment raises the per-IP values (everything runs from 127.0.0.1).
 - **Purpose separation**: `secure_access_links.purpose` is `document_upload` or `document_signing` (Phase 5); each public API only
   accepts its own purpose, so a signing token is "unknown" to the upload endpoints and vice versa.
-- **Email boundary**: Phase 4 never claims a link was emailed. Links are copied by the administrator; Phase 6 will send them through
-  queued mail using the same one-time URL returned by `IssuedLink`.
+- **Email boundary**: a copied link is never reported as e-mailed. Phase 6 e-mails do not reuse a copied link: each accepted
+  e-mail registers its own new link (section 9).
 
 ## 8. Electronic PDF signing (Phase 5 — implemented)
 
@@ -261,8 +261,9 @@ SigningService::complete()  (admin and client share it)
 - **One signer per PDF**: one `signer_type` with exactly one of `signer_user_id`/`client_id` (CHECKs); one active request per
   document (partial unique index); signed versions are never signing sources (insert trigger); one signature record per request.
 - **Progress** lives on `signing_requests` (`status` + `sent_at/viewed_at/started_at/signed_at`, server time, forward-only, CHECK
-  ordered). "Sent" is reached only by the administrator confirming they shared the link (`delivery_channel = manual`); delivery is
-  kept separate from progress so Phase 6 can add e-mail outcomes without changing the signing state machine.
+  ordered). "Sent" is reached by the administrator confirming they shared the link (`delivery_channel = manual`) or, from
+  Phase 6, by the SMTP server accepting the invitation e-mail (`delivery_channel = email`, `delivery_status = email_accepted`);
+  delivery stays separate from progress, so the signing state machine did not change.
 - **Lifecycle** (`SigningLifecycle`): archiving a matter or document, or adding a newer version, cancels unfinished requests with a
   reason and revokes their links in the same transaction; restoring revives nothing.
 - **Coordinates**: the browser sends fractions of the *displayed* page (PDF.js applies `/Rotate`); FPDI imports pages with the same
@@ -273,4 +274,46 @@ SigningService::complete()  (admin and client share it)
   `AuthorizePublicSigningLink`).
 - **Evidence**: `signature_records` (immutable) holds the signer snapshot, confirmed name, method, page and placement, source and
   signed version ids + SHA-256, the versioned consent text, server time, IP and user agent. It is not a certificate-based signature.
-- Phase 6 adds e-mail invitations, reminders and expiry notices (queued mail, Mailpit in development) and admin notifications.
+
+## 9. E-mail, reminders and notifications (Phase 6 — implemented)
+
+```
+Admin "Send e-mail" ─► POST …/document-requests/{r}/send-email | …/signing-requests/{s}/send-email  {idempotency_key}
+                       (correction: POST …/request-correction {…, send_email: true} — decision committed first)
+DocumentRequestEmailService / SigningEmailService
+  1 CLAIM   transaction: lock matter → request; same idempotency key → return the first result; eligibility; recipient
+            derived by the server (client e-mail / signer snapshot); cooldown (same type, 60 s); one 'sending' row per
+            request (partial unique index) → email_deliveries(status = sending)
+  2 SEND    no transaction: token = random_bytes(32) in memory → ClientActionMail (HTML + text) → Laravel Mail → SMTP,
+            bounded by MAIL_TIMEOUT; SendOutcome = accepted (+ server "queued as" id) | failed (safe category)
+  3a ACCEPT transaction: lock matter → request → delivery; SecureAccessLinkService::registerDeliveredLink (SHA-256 only;
+            previous usable link revoked 'replaced'; request closed meanwhile → link stored already revoked);
+            signing Ready → Sent (email_accepted); delivery accepted; activity email.accepted
+  3b FAIL   transaction: delivery failed + category; activity email.failed; automatic → admin notification.
+            The request and its existing links are untouched.
+Scheduler (routes/console.php): lexora:communications every 5 min, withoutOverlapping, onOneServer
+  recover 'sending' claims older than 10 min → failed/interrupted · overdue + expired-link notifications (once) ·
+  reminders → the same services with initiated_by = automatic and key reminder:{type}:{id}:{slot}
+Client upload / signature transactions ─► AdminNotifier ─► WorkspaceNotification (database channel, every administrator)
+Next.js: SendEmailDialog · CommunicationHistory · NotificationBell (30 s unread poll) · /notifications · dashboard card
+```
+
+- **No queue, no stored token.** Approach "synchronous send after commit": the token exists only in PHP memory and inside the
+  message, so it can never appear in a job payload, table or log. Its hash is stored only once the SMTP server accepted the
+  message, so a failed send can never create a working link the client did not receive, and never revokes the link they have.
+- **Honest outcomes.** Statuses `sending`, `accepted`, `failed` (incl. `interrupted` = outcome unknown after a crash), `skipped`.
+  "Accepted" means the configured SMTP server took the message — never "delivered". HTTP: 201 accepted, 200 replay, 502
+  `email_failed`, 503 `email_unavailable`, 409 not allowed now; the frontend shows the server's text for the two e-mail codes
+  only.
+- **Transport readiness** (`EmailDeliveryService::transportStatus`): unavailable when e-mail is switched off, the mailer is
+  `log`/`array`, the host or sender is missing, or (production) `PUBLIC_APP_URL` is not public HTTPS. Exposes no credentials.
+- **Reminders** are evaluated in the firm time zone (`LegalDate`). Document requests with a due date use slots −3/0/+2 days
+  (only the latest due slot is sent), without one days 4 and 10 after the first link; signing requests 3 days after sharing and
+  1 day before expiry (only with a usable link and no signer activity in 24 h). Global limits: 24 h between e-mails, 3
+  reminders per request, slot idempotency. Archived matters, closed requests and manually revoked links are skipped.
+- **Notifications** use Laravel's database channel through `User::notifications()` (microsecond timestamps) and are written in
+  the same transaction as the event they describe. Data holds titles, an internal `href` and ids only — never links, tokens or
+  document content. Read state is per administrator.
+- **Rate limits**: `communications` (20 sends/min per administrator), `test-email` (3 per 10 min, only to the sender's own
+  address). Configuration: `config/lexora.php` → `communications`, `config/mail.php`; guide in
+  [`email-configuration.md`](email-configuration.md).

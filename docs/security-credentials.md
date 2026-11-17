@@ -11,6 +11,9 @@ Review date: 2026-11-17 (during the Phase 4 merge). Scope: everything committed 
 | PostgreSQL superuser secret | **No** | `C:\laragon\data\postgresql-16-superuser.secret` (outside the repository) | Absent from every commit. |
 | `APP_KEY` | **No** | `backend/.env` only | Generated per installation; absent from every commit. |
 | Secure-link tokens (Phase 4 upload, Phase 5 signing) | **No** | never stored anywhere | Only SHA-256 hashes in the database (not committed either). Never in logs, activity, browser storage or URLs sent to a server (fragment + header only). |
+| SMTP credentials (Phase 6) | **No** | `backend/.env` / the server's secret store only | Development uses the project's Mailpit without authentication. `GET /api/communications/status` reports only whether a login is configured, never the username or password. |
+| E-mailed link tokens (Phase 6) | **No** | only inside the sent message | Generated in memory, hash stored after SMTP acceptance; no queue, so no job payload. Delivery records, activity and notifications hold no links (tested). |
+| Mailpit messages | **No** | inside the Mailpit containers (no volume) | Fictional development and test messages only. |
 | Signed PDFs, signature evidence (Phase 5) | **No** | private `documents` disk and the database | `storage/app/private/*` and `verification-logs/` are gitignored; signature payloads are excluded from flashed input and logs. |
 | **Demo administrator password** `Lexora!Demo2026` | **Yes** | `backend/.env.example` (`DEMO_ADMIN_PASSWORD`), `frontend/.env.example` (`NEXT_PUBLIC_DEMO_PASSWORD`), `README.md` (Demo login), `frontend/e2e/fixtures.ts` (default when `E2E_ADMIN_PASSWORD` is unset) | Development fixture for the fictional demo workspace. |
 | Test-only password `Test-Password-123` | Yes | `backend/phpunit.xml`, `DemoSeederTest` | Exists only inside the disposable `amanet_test` database during PHPUnit runs. |
@@ -74,6 +77,17 @@ triggers in §5.
 7. Signing (Phase 5): review `SIGNING_LINK_EXPIRY_DAYS` and the `PUBLIC_SIGNING_*` rate limits, keep the `documents` disk private
    and backed up together with the database (the signed PDFs' SHA-256 values live in the database), and make sure the firm accepts
    the documented legal limits (application-level electronic signatures, no certificate, no independent identity verification).
+8. E-mail (Phase 6):
+   - Configure the SMTP provider through `MAIL_HOST`, `MAIL_PORT`, `MAIL_SCHEME` (TLS), `MAIL_USERNAME` and `MAIL_PASSWORD` in the
+     secret store. Use an app-specific SMTP credential with the least privileges, and never a personal mailbox password.
+   - Set `MAIL_FROM_ADDRESS` on a domain you control and publish **SPF, DKIM and DMARC** records for it. These are not
+     configured or verified by this project.
+   - `PUBLIC_APP_URL` must be public HTTPS: production refuses to send e-mail otherwise.
+   - Leave `LEXORA_MAIL_UI_URL` empty.
+   - Add the scheduler cron entry (`* * * * * php artisan schedule:run`).
+   - Before e-mailing clients, call `POST /api/communications/test-email` while signed in (API only, no button). It goes only to
+     your own address.
+   - If the SMTP password leaks, rotate it at the provider; nothing in the repository or database needs to change.
 
 ## 5. When to rotate, and what to do if a real secret leaks
 

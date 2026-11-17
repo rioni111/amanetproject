@@ -8,6 +8,7 @@ use App\Models\Document;
 use App\Models\DocumentRequest;
 use App\Models\DocumentRequestSubmission;
 use App\Models\DocumentVersion;
+use App\Models\EmailDelivery;
 use App\Models\Matter;
 use App\Models\MatterNote;
 use App\Models\SecureAccessLink;
@@ -53,6 +54,7 @@ class AppServiceProvider extends ServiceProvider
             'secure_access_link' => SecureAccessLink::class,
             'signing_request' => SigningRequest::class,
             'signature_record' => SignatureRecord::class,
+            'email_delivery' => EmailDelivery::class,
         ]);
 
         Password::defaults(fn () => $this->app->isProduction()
@@ -83,6 +85,10 @@ class AppServiceProvider extends ServiceProvider
         ]);
 
         // Phase 5 public signing: page/PDF/progress requests per IP; completions per IP and per token.
+        // Phase 6: administrators' e-mail actions (abuse brake on top of the per-request cooldown) and test e-mails.
+        RateLimiter::for('communications', fn (Request $request) => Limit::perMinute((int) config('lexora.communications.sends_per_minute', 20))
+            ->by('communications:'.($request->user()?->id ?? $request->ip())));
+        RateLimiter::for('test-email', fn (Request $request) => Limit::perMinutes(10, 3)->by('test-email:'.($request->user()?->id ?? $request->ip())));
         RateLimiter::for('public-signing', fn (Request $request) => Limit::perMinute((int) config('lexora.signing.views_per_minute', 120))
             ->by('public-signing-ip:'.$request->ip()));
         RateLimiter::for('public-signing-complete', fn (Request $request) => [

@@ -38,6 +38,24 @@ try {
     $pdo = ((& $php -m) -join ' ') -match '\bpdo_pgsql\b'
     Add-Result 'PHP pdo_pgsql loaded' $(if ($pdo) { 'PASS' } else { 'FAIL' })
 
+    # ---------------------------------------------------------------- e-mail test inbox (Phase 6)
+    # PHPUnit's SMTP integration tests and the Playwright suite deliver real messages to this project's
+    # ISOLATED E2E Mailpit (docker compose service mailpit-e2e, 127.0.0.1 only). Only that one service is
+    # started if needed; no other container is touched and nothing is downloaded (--pull never).
+    $mailUi = "http://127.0.0.1:$(if ($env:LEXORA_E2E_MAIL_UI_PORT) { $env:LEXORA_E2E_MAIL_UI_PORT } else { 8027 })/api/v1/info"
+    $mailOk = $false
+    try { Invoke-WebRequest -UseBasicParsing -Uri $mailUi -TimeoutSec 5 | Out-Null; $mailOk = $true } catch { }
+    if (-not $mailOk -and (Get-Command docker -ErrorAction SilentlyContinue)) {
+        Write-Log 'Starting the E2E Mailpit (docker compose up -d --pull never mailpit-e2e)...'
+        Push-Location $Root
+        try { & docker compose up -d --pull never mailpit-e2e 2>&1 | ForEach-Object { Write-Log "  $_" 'DarkGray' } } finally { Pop-Location }
+        for ($i = 0; $i -lt 20 -and -not $mailOk; $i++) {
+            Start-Sleep -Seconds 1
+            try { Invoke-WebRequest -UseBasicParsing -Uri $mailUi -TimeoutSec 3 | Out-Null; $mailOk = $true } catch { }
+        }
+    }
+    Add-Result 'E2E Mailpit (isolated SMTP inbox)' $(if ($mailOk) { 'PASS' } else { 'FAIL' }) $(if ($mailOk) { '' } else { 'Start Docker Desktop, then: docker compose up -d --pull never mailpit-e2e' })
+
     # ---------------------------------------------------------------- backend
     Invoke-Native 'composer validate' $Backend { & $php $tc.ComposerPhar validate --no-check-publish --no-ansi } -AllowFailure | Out-Null
     Invoke-Native 'php artisan migrate (status)' $Backend { & $php artisan migrate --force --no-interaction } -AllowFailure | Out-Null
@@ -55,7 +73,7 @@ try {
     if (-not $SkipE2E) {
         # Playwright starts dedicated E2E servers (see above) and resets amanet_e2e in global-setup.
         $env:CI = ''
-        Invoke-Native 'Playwright E2E (Phase 1-5 workflows, desktop + mobile)' $Frontend { & $npx playwright test --reporter=list } -AllowFailure | Out-Null
+        Invoke-Native 'Playwright E2E (Phase 1-6 workflows, desktop + mobile)' $Frontend { & $npx playwright test --reporter=list } -AllowFailure | Out-Null
     }
 } catch {
     Add-Result 'Verification aborted' 'FAIL' $_.Exception.Message

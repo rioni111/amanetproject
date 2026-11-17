@@ -5,6 +5,7 @@ namespace App\Services\Requests;
 use App\Enums\ActivityEventType;
 use App\Enums\DocumentOrigin;
 use App\Enums\DocumentRequestStatus;
+use App\Enums\NotificationKind;
 use App\Enums\SubmissionReviewStatus;
 use App\Models\Document;
 use App\Models\DocumentRequest;
@@ -12,6 +13,7 @@ use App\Models\DocumentRequestSubmission;
 use App\Models\Matter;
 use App\Models\SecureAccessLink;
 use App\Services\ActivityLogger;
+use App\Services\Communications\AdminNotifier;
 use App\Services\Documents\DocumentService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -37,6 +39,7 @@ class ClientSubmissionService
         private readonly DocumentService $documents,
         private readonly PublicUploadLinkResolver $resolver,
         private readonly ActivityLogger $activity,
+        private readonly AdminNotifier $notifier,
     ) {}
 
     public function submit(SecureAccessLink $link, UploadedFile $file, ?string $message): DocumentRequestSubmission
@@ -118,6 +121,10 @@ class ClientSubmissionService
                         'link_id' => $link->id,
                         'has_client_message' => $message !== null,
                     ]);
+                // Phase 6: tell the administrators — in the same transaction as the submission it reports.
+                $this->notifier->notify($correction ? NotificationKind::CorrectionSubmitted : NotificationKind::DocumentSubmitted, $matter,
+                    ($correction ? 'A corrected version' : 'A document')." was uploaded for \"{$request->title}\" ({$version->label()}). Review it in the request.",
+                    "/matters/{$matter->id}/requests/{$request->id}", ['request_id' => $request->id, 'submission_id' => $submission->id]);
                 $this->documents->touchMatter($matter);
 
                 return $submission->setRelation('version', $version);

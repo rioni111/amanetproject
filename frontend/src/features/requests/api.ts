@@ -85,6 +85,13 @@ export interface RequestInput {
   due_date: string | null;
 }
 
+/** Phase 6: outcome of "send the correction by e-mail" (the correction itself is always recorded). */
+export interface CorrectionEmailOutcome {
+  status: "accepted" | "failed" | "not_sent";
+  message: string;
+  delivery: unknown;
+}
+
 /** Responses that create a link carry its URL once. Callers keep it in component state only. */
 export interface WithLink {
   data: DocumentRequest;
@@ -146,8 +153,8 @@ export function useReviewAction(matterId: number, requestId: number) {
 export function useRequestCorrection(matterId: number, requestId: number) {
   return useRequestMutation(
     matterId,
-    (input: { submission_id: number; lock_version: number; reason: string; expires_in_days?: number }) =>
-      api.post<WithLink>(`/api/matters/${matterId}/document-requests/${requestId}/request-correction`, input),
+    (input: { submission_id: number; lock_version: number; reason: string; expires_in_days?: number; send_email?: boolean }) =>
+      api.post<WithLink & { email?: CorrectionEmailOutcome }>(`/api/matters/${matterId}/document-requests/${requestId}/request-correction`, input),
   );
 }
 

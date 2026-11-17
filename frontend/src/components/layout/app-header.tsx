@@ -7,6 +7,7 @@ import * as React from "react";
 import { BrandMark } from "@/components/shared/brand-mark";
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useAuthenticatedUser } from "@/features/auth/auth-guard";
+import { NotificationBell } from "@/features/notifications/notification-bell";
 import { initials } from "@/lib/utils/format";
 
 import { SidebarContent } from "./app-sidebar";
@@ -51,6 +52,8 @@ export function AppHeader() {
             </li>
           </ol>
         </nav>
+
+        <NotificationBell />
 
         <div className="flex items-center gap-2.5" aria-label="Signed in administrator">
           <div className="hidden text-right leading-tight sm:block">

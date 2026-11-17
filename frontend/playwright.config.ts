@@ -1,6 +1,17 @@
 import { defineConfig, devices } from "@playwright/test";
 
-import { API_URL, E2E_API_PORT, E2E_DATABASE, E2E_DOCUMENTS_DIR, E2E_WEB_PORT, FRONTEND_URL, SESSION_COOKIE } from "./e2e/env";
+import {
+  API_URL,
+  E2E_API_PORT,
+  E2E_DATABASE,
+  E2E_DOCUMENTS_DIR,
+  E2E_MAIL_UI_URL,
+  E2E_SMTP_RELAY_CONTROL,
+  E2E_SMTP_RELAY_PORT,
+  E2E_WEB_PORT,
+  FRONTEND_URL,
+  SESSION_COOKIE,
+} from "./e2e/env";
 
 /**
  * End-to-end tests run against the REAL stack: Next.js → Laravel → PostgreSQL — on dedicated ports
@@ -45,6 +56,13 @@ export default defineConfig({
   ],
   webServer: [
     {
+      // Phase 6: test-controlled SMTP relay → isolated E2E Mailpit (scenario F switches it off and on).
+      command: "node e2e/smtp-relay.mjs",
+      url: `${E2E_SMTP_RELAY_CONTROL}/health`,
+      reuseExistingServer: false,
+      timeout: 15_000,
+    },
+    {
       // Process environment overrides backend/.env: same code and credentials, E2E database and origins.
       command: `php artisan serve --host=localhost --port=${E2E_API_PORT}`,
       cwd: "../backend",
@@ -67,6 +85,15 @@ export default defineConfig({
         PUBLIC_LINK_INVALID_ATTEMPTS: "200",
         PUBLIC_SIGNING_VIEWS_PER_MINUTE: "1000",
         PUBLIC_SIGNING_COMPLETIONS_PER_MINUTE: "200",
+        // Phase 6: real SMTP to the isolated E2E Mailpit (through the relay); never the development inbox.
+        MAIL_MAILER: "smtp",
+        MAIL_HOST: "127.0.0.1",
+        MAIL_PORT: String(E2E_SMTP_RELAY_PORT),
+        MAIL_TIMEOUT: "5",
+        MAIL_USERNAME: "",
+        MAIL_PASSWORD: "",
+        LEXORA_MAIL_UI_URL: E2E_MAIL_UI_URL,
+        LEXORA_EMAIL_SENDS_PER_MINUTE: "500",
       },
     },
     {

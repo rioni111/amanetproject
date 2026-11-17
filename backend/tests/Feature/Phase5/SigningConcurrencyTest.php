@@ -208,6 +208,8 @@ class SigningConcurrencyTest extends TestCase
             $this->db->table('documents')->whereIn('id', $documents)->delete();
             $this->db->table('matters')->whereIn('id', $matters)->delete();
             $this->db->table('clients')->where('id', $this->client)->delete();
+            // Phase 6: client signatures notify the (committed) race administrator.
+            $this->db->table('notifications')->where('notifiable_type', 'user')->where('notifiable_id', $this->user)->delete();
             $this->db->table('users')->where('id', $this->user)->delete();
             foreach ($triggers as $t) {
                 [$table, $trigger] = explode(' ', $t);

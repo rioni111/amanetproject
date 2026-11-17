@@ -69,4 +69,10 @@ enum ActivityEventType: string
     case SigningCompleted = 'signing.completed';                 // signature record committed
     case SigningCancelled = 'signing.cancelled';
     case DocumentSigned = 'document.signed';                     // the signed PDF version was added
+
+    // Phase 6: e-mail communication. Recorded when the outcome is KNOWN (never when merely attempted).
+    // Metadata: delivery id, communication type, trigger, request ids, recipient snapshot, failure category —
+    // never the action link, its token or token hash, SMTP credentials or the message body.
+    case EmailAccepted = 'email.accepted';                       // the SMTP server accepted the message
+    case EmailFailed = 'email.failed';                           // the attempt failed (safe category recorded)
 }
