@@ -45,7 +45,7 @@ export default defineConfig({
       name: "desktop",
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
       dependencies: ["setup"],
-      testIgnore: /mobile\.spec\.ts/,
+      testIgnore: [/mobile\.spec\.ts/, /cross-browser\.spec\.ts/],
     },
     {
       name: "mobile",
@@ -53,6 +53,13 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /mobile\.spec\.ts/,
     },
+    // Phase 7: opt-in engine compatibility checks (E2E_CROSS_BROWSER=1; needs `npx playwright install firefox webkit`).
+    ...(process.env.E2E_CROSS_BROWSER
+      ? [
+          { name: "firefox", use: { ...devices["Desktop Firefox"], viewport: { width: 1280, height: 900 } }, testMatch: /cross-browser\.spec\.ts/ },
+          { name: "webkit", use: { ...devices["Desktop Safari"], viewport: { width: 1280, height: 900 } }, testMatch: /cross-browser\.spec\.ts/ },
+        ]
+      : []),
   ],
   webServer: [
     {

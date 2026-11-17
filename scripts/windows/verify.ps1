@@ -58,6 +58,8 @@ try {
 
     # ---------------------------------------------------------------- backend
     Invoke-Native 'composer validate' $Backend { & $php $tc.ComposerPhar validate --no-check-publish --no-ansi } -AllowFailure | Out-Null
+    # Phase 7: known security advisories (needs internet access to packagist.org / registry.npmjs.org).
+    Invoke-Native 'composer audit (PHP dependency advisories)' $Backend { & $php $tc.ComposerPhar audit --no-ansi } -AllowFailure | Out-Null
     Invoke-Native 'php artisan migrate (status)' $Backend { & $php artisan migrate --force --no-interaction } -AllowFailure | Out-Null
     Invoke-Native 'php artisan db:seed (idempotent)' $Backend { & $php artisan db:seed --force --no-interaction } -AllowFailure | Out-Null
     Invoke-Native 'php artisan route:list' $Backend { & $php artisan route:list --except-vendor } -AllowFailure | Out-Null
@@ -65,6 +67,8 @@ try {
     Invoke-Native 'Pint (code style)' $Backend { & $php vendor\laravel\pint\builds\pint --test } -AllowFailure | Out-Null
 
     # ---------------------------------------------------------------- frontend
+    # Runtime (production) dependencies only: the remaining advisories are in ESLint's dev tooling (docs/SECURITY_AUDIT.md).
+    Invoke-Native 'npm audit --omit=dev (runtime dependency advisories)' $Frontend { & $npm audit --omit=dev } -AllowFailure | Out-Null
     Invoke-Native 'ESLint (npm run lint)' $Frontend { & $npm run lint } -AllowFailure | Out-Null
     Invoke-Native 'TypeScript (npm run typecheck)' $Frontend { & $npm run typecheck } -AllowFailure | Out-Null
     Invoke-Native 'Production build (npm run build)' $Frontend { & $npm run build } -AllowFailure | Out-Null
@@ -73,7 +77,7 @@ try {
     if (-not $SkipE2E) {
         # Playwright starts dedicated E2E servers (see above) and resets amanet_e2e in global-setup.
         $env:CI = ''
-        Invoke-Native 'Playwright E2E (Phase 1-6 workflows, desktop + mobile)' $Frontend { & $npx playwright test --reporter=list } -AllowFailure | Out-Null
+        Invoke-Native 'Playwright E2E (Phase 1-7 workflows, desktop + mobile)' $Frontend { & $npx playwright test --reporter=list } -AllowFailure | Out-Null
     }
 } catch {
     Add-Result 'Verification aborted' 'FAIL' $_.Exception.Message
