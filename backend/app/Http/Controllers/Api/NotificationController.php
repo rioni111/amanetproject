@@ -33,6 +33,8 @@ class NotificationController extends Controller
                 'last_page' => $page->lastPage(),
                 'per_page' => $page->perPage(),
                 'total' => $page->total(),
+                'from' => $page->firstItem(),
+                'to' => $page->lastItem(),
                 'unread_count' => $user->unreadNotifications()->count(),
             ],
         ]);

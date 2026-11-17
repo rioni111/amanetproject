@@ -36,8 +36,14 @@ export function SigningProgress({ request }: { request: SigningRequest }) {
           label: "Sent",
           at: request.sent_at,
           icon: Send,
-          done: "Invitation marked as shared by the administrator (outside the app).",
-          pending: request.status === "ready" ? "Not shared yet — generate and copy the link, send it, then mark it as shared." : "Not confirmed as shared.",
+          done:
+            request.delivery_status === "email_accepted"
+              ? "Invitation e-mail accepted by the configured mail server."
+              : "Invitation marked as shared by the administrator (outside the app).",
+          pending:
+            request.status === "ready"
+              ? "Not shared yet — e-mail the invitation, or generate and copy the link, send it, then mark it as shared."
+              : "Not confirmed as shared.",
         },
         { key: "viewed", label: "Viewed", at: request.viewed_at, icon: Eye, done: "The designated document was opened through the secure link.", pending: "Not opened yet." },
         { key: "started", label: "Started", at: request.started_at, icon: PenLine, done: "The signer began the signing process.", pending: "Not started yet." },

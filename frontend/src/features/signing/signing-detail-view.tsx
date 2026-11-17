@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Ban, CheckCircle2, Download, Eye, FileSearch, Link2, Link2Off, Loader2, PenLine, RefreshCw, Send, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Ban, CheckCircle2, Download, Eye, FileSearch, Link2, Link2Off, Loader2, Mail, PenLine, RefreshCw, Send, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 
@@ -11,6 +11,8 @@ import { useToast } from "@/components/shared/toaster";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CommunicationHistory } from "@/features/communications/communication-history";
+import { SendEmailDialog } from "@/features/communications/send-email-dialog";
 import { downloadVersion } from "@/features/documents/api";
 import { documentHref } from "@/features/documents/document-list";
 import { PdfViewerDialog } from "@/features/documents/pdf-viewer-dialog";
@@ -55,6 +57,7 @@ function SigningWorkspace({ request, links, evidence }: { request: SigningReques
   const [issued, setIssued] = React.useState<IssuedLink | null>(null);
   const [preview, setPreview] = React.useState<DocumentVersion | null>(null);
   const [signing, setSigning] = React.useState(false);
+  const [emailing, setEmailing] = React.useState(false);
   const [downloading, setDownloading] = React.useState<number | null>(null);
   const client = request.signer_type === "client";
 
@@ -108,6 +111,12 @@ function SigningWorkspace({ request, links, evidence }: { request: SigningReques
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
+          {request.allowed_actions.send_email ? (
+            <Button onClick={() => setEmailing(true)}>
+              <Mail aria-hidden />
+              {request.sent_at || links.length > 0 ? "E-mail invitation again" : "Send signing invitation"}
+            </Button>
+          ) : null}
           {request.allowed_actions.admin_sign && request.source_version ? (
             <Button onClick={() => setSigning(true)}>
               <PenLine aria-hidden />
@@ -195,6 +204,7 @@ function SigningWorkspace({ request, links, evidence }: { request: SigningReques
             </CardContent>
           </Card>
           {client ? <SigningLinkCard request={request} links={links} onIssued={setIssued} onShare={() => setConfirm("share")} /> : null}
+          {client ? <CommunicationHistory target="signing-requests" matterId={request.matter_id} id={request.id} /> : null}
         </div>
       </div>
 
@@ -233,6 +243,24 @@ function SigningWorkspace({ request, links, evidence }: { request: SigningReques
         onConfirm={() => run("mark-shared")}
       />
       <LinkRevealDialog link={issued} purpose="signing" title="Secure signing link" onClose={() => setIssued(null)} />
+      {client ? (
+        <SendEmailDialog
+          open={emailing}
+          onOpenChange={setEmailing}
+          target="signing-requests"
+          matterId={request.matter_id}
+          targetId={request.id}
+          title="E-mail the signing invitation"
+          what={
+            request.status === "started"
+              ? "The signer receives a new secure link to review and sign. They have already started: a new link replaces the one they are using."
+              : "The signer receives a secure link to review and sign the PDF. No account is needed. Progress shows ‘Sent’ once the mail server accepts the e-mail."
+          }
+          recipientName={request.signer_name}
+          recipientEmail={request.signer_email}
+          replacesLink={links.length > 0}
+        />
+      ) : null}
     </div>
   );
 }

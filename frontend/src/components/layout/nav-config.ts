@@ -1,4 +1,4 @@
-import { Briefcase, FileText, Inbox, LayoutDashboard, PenLine, Users, type LucideIcon } from "lucide-react";
+import { Bell, Briefcase, FileText, Inbox, LayoutDashboard, PenLine, Users, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   title: string;
@@ -23,6 +23,9 @@ export const PRIMARY_NAV: NavItem[] = [
  */
 export const UPCOMING_NAV: { title: string; icon: LucideIcon; phase: number }[] = [];
 
+/** Pages reached from the header (not the sidebar) that still need a breadcrumb title. */
+export const HEADER_NAV: NavItem[] = [{ title: "Notifications", href: "/notifications", icon: Bell, description: "Your workspace notifications" }];
+
 export function findNavItem(pathname: string): NavItem | undefined {
-  return PRIMARY_NAV.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+  return [...PRIMARY_NAV, ...HEADER_NAV].find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
 }

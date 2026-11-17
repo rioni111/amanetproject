@@ -7,13 +7,24 @@ export class ApiError extends Error {
   readonly status: number;
   readonly fieldErrors: Record<string, string[]>;
   readonly retryAfter: number | null;
+  readonly code: string | null;
+  readonly data: unknown;
 
-  constructor(status: number, message: string, fieldErrors: Record<string, string[]> = {}, retryAfter: number | null = null) {
+  constructor(
+    status: number,
+    message: string,
+    fieldErrors: Record<string, string[]> = {},
+    retryAfter: number | null = null,
+    code: string | null = null,
+    data: unknown = null,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.fieldErrors = fieldErrors;
     this.retryAfter = retryAfter;
+    this.code = code;
+    this.data = data;
   }
 
   get isUnauthenticated() {
@@ -57,10 +68,20 @@ export async function toApiError(response: Response): Promise<ApiError> {
   const retryAfterHeader = response.headers.get("Retry-After");
   const retryAfter = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : null;
 
-  // Never surface raw server exception messages for 5xx responses.
-  const message = response.status >= 500 || !body.message ? fallbackMessage(response.status) : body.message;
+  // Never surface raw server exception messages for 5xx responses — except the e-mail outcomes, whose
+  // messages are written for administrators and contain no internals (Phase 6: 502 email_failed,
+  // 503 email_unavailable).
+  const safeServerMessage = body.code === "email_failed" || body.code === "email_unavailable";
+  const message = (response.status >= 500 && !safeServerMessage) || !body.message ? fallbackMessage(response.status) : body.message;
 
-  return new ApiError(response.status, message, body.errors ?? {}, Number.isFinite(retryAfter) ? retryAfter : null);
+  return new ApiError(
+    response.status,
+    message,
+    body.errors ?? {},
+    Number.isFinite(retryAfter) ? retryAfter : null,
+    body.code ?? null,
+    safeServerMessage ? (body.data ?? null) : null,
+  );
 }
 
 export function getErrorMessage(error: unknown): string {

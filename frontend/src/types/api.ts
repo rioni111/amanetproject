@@ -235,7 +235,7 @@ export interface DocumentRequest {
   approved_version?: { id: number; version_number: number; label: string } | null;
   reviewed_by?: { id: number; name: string } | null;
   cancelled_at: string | null;
-  client?: { id: number; name: string };
+  client?: { id: number; name: string; email?: string };
   matter?: { id: number; matter_number: string; title: string; status: MatterStatus };
   document?: { id: number; title: string; status: DocumentStatus; versions_count: number } | null;
   latest_submission?: DocumentRequestSubmission | null;
@@ -253,6 +253,7 @@ export interface DocumentRequest {
     approve: boolean;
     request_correction: boolean;
     cancel: boolean;
+    send_email: boolean;
   };
 }
 
@@ -305,7 +306,7 @@ export interface SigningRequest {
   status_label: string;
   is_active: boolean;
   delivery_channel: "manual" | "email" | null;
-  delivery_status: "not_shared" | "shared_manually";
+  delivery_status: "not_shared" | "shared_manually" | "email_accepted";
   delivery_status_label: string;
   sent_at: string | null;
   viewed_at: string | null;
@@ -331,6 +332,7 @@ export interface SigningRequest {
     mark_shared: boolean;
     cancel: boolean;
     admin_sign: boolean;
+    send_email: boolean;
   };
 }
 
@@ -419,6 +421,9 @@ export interface DashboardStats {
   requests_approved: number;
   signatures_pending: number;
   signatures_signed: number;
+  emails_sending: number;
+  emails_accepted_30d: number;
+  emails_failed_30d: number;
 }
 
 export interface DashboardSummary {
@@ -434,4 +439,96 @@ export interface DashboardSummary {
 export interface ApiErrorBody {
   message?: string;
   errors?: Record<string, string[]>;
+  /** Machine-readable reason, e.g. "email_failed" (502) or "email_unavailable" (503). */
+  code?: string;
+  /** Payload some error responses carry (the failed e-mail delivery record). */
+  data?: unknown;
+}
+
+// ---------------------------------------------------------------- Phase 6: e-mail and notifications
+
+export type EmailCommunicationType =
+  | "document_request"
+  | "document_correction"
+  | "document_request_reminder"
+  | "signing_invitation"
+  | "signing_reminder"
+  | "test";
+
+/** "accepted" = accepted by the configured SMTP server — not proof of arrival in the recipient's inbox. */
+export type EmailDeliveryStatus = "pending" | "sending" | "accepted" | "failed" | "cancelled" | "skipped";
+
+export interface EmailDelivery {
+  id: number;
+  matter_id: number | null;
+  document_request_id: number | null;
+  signing_request_id: number | null;
+  communication_type: EmailCommunicationType;
+  communication_label: string;
+  initiated_by: "manual" | "automatic";
+  reminder_slot: string | null;
+  recipient_email: string;
+  recipient_name: string;
+  subject: string;
+  status: EmailDeliveryStatus;
+  status_label: string;
+  attempt_count: number;
+  last_attempt_at: string | null;
+  accepted_at: string | null;
+  failed_at: string | null;
+  failure_category: string | null;
+  failure_message: string | null;
+  provider_message_id: string | null;
+  link?: { id: number; state: SecureLinkState; expires_at: string } | null;
+  created_by?: { id: number; name: string } | null;
+  created_at: string | null;
+}
+
+export interface EmailSendResult {
+  data: EmailDelivery;
+  message: string;
+  replayed?: boolean;
+}
+
+/** E-mail transport readiness — never credentials. */
+export interface CommunicationStatus {
+  available: boolean;
+  reason: string | null;
+  mailer: string;
+  transport: string;
+  host: string | null;
+  port: number | null;
+  encryption: string | null;
+  authenticated: boolean;
+  from_address: string;
+  from_name: string;
+  reply_to: string | null;
+  public_app_url: string;
+  public_url_https: boolean;
+  public_url_local: boolean;
+  mail_ui_url: string | null;
+}
+
+export type NotificationKind =
+  | "document_submitted"
+  | "correction_submitted"
+  | "document_signed"
+  | "request_overdue"
+  | "signing_link_expired"
+  | "email_failed";
+
+export interface WorkspaceNotification {
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  href: string;
+  matter: { id: number; matter_number: string | null; title: string | null } | null;
+  read_at: string | null;
+  created_at: string | null;
+}
+
+export interface NotificationPage {
+  data: WorkspaceNotification[];
+  meta: PaginationMeta & { unread_count: number };
 }

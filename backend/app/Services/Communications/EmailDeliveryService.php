@@ -16,7 +16,6 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
-use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 use Symfony\Component\Mailer\Exception\UnexpectedResponseException;
 use Symfony\Component\Mime\Exception\RfcComplianceException;
@@ -92,7 +91,7 @@ class EmailDeliveryService
     {
         $status = $this->transportStatus();
         if (! $status['available']) {
-            throw new HttpException(503, (string) $status['reason']);
+            throw new EmailUnavailableException((string) $status['reason']);
         }
     }
 

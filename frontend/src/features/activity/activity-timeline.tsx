@@ -2,6 +2,8 @@
 
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
+  MailCheck,
+  MailX,
   Archive,
   Ban,
   Eye,
@@ -85,6 +87,9 @@ const EVENT_META: Record<string, { label: string; icon: LucideIcon; tone: string
   "signing.completed": { label: "Document signed", icon: FileCheck2, tone: "text-primary bg-primary-soft" },
   "signing.cancelled": { label: "Signing request cancelled", icon: Ban, tone: "text-muted-foreground bg-surface-muted" },
   "document.signed": { label: "Signed PDF stored", icon: FileStack, tone: "text-primary bg-primary-soft" },
+  // Phase 6: e-mail outcomes ("accepted by the mail server" — not inbox delivery).
+  "email.accepted": { label: "E-mail accepted by the mail server", icon: MailCheck, tone: "text-primary bg-primary-soft" },
+  "email.failed": { label: "E-mail not sent", icon: MailX, tone: "text-danger bg-danger-soft" },
 };
 const FALLBACK = { label: "Activity", icon: CircleDot, tone: "text-muted-foreground bg-surface-muted" };
 
