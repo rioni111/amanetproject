@@ -27,13 +27,28 @@ services:
       timeout: 5s
       retries: 10
 
+  # Phase 6: local SMTP capture. Nothing sent here leaves the machine. Ports are configurable because
+  # 1025/8025 are often taken by other projects' Mailpit; both bind to 127.0.0.1 only.
+  #   docker compose up -d --pull never mailpit mailpit-e2e
   mailpit:
-    # Catches all outgoing email in development (used from Phase 6). UI: http://localhost:8025
-    image: axllent/mailpit:v1.21
+    # Development inbox — UI http://localhost:${LEXORA_MAIL_UI_PORT}, SMTP localhost:${LEXORA_MAIL_SMTP_PORT}
+    image: axllent/mailpit:v1.31.1
     restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: 2000
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "127.0.0.1:${LEXORA_MAIL_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${LEXORA_MAIL_UI_PORT:-8025}:8025"
+
+  mailpit-e2e:
+    # Isolated inbox for the Playwright suite (emptied by its global setup; never the development inbox)
+    image: axllent/mailpit:v1.31.1
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: 2000
+    ports:
+      - "127.0.0.1:${LEXORA_E2E_MAIL_SMTP_PORT:-1027}:1025"
+      - "127.0.0.1:${LEXORA_E2E_MAIL_UI_PORT:-8027}:8025"
 
 volumes:
   postgres-data:

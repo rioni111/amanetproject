@@ -81,7 +81,44 @@ class SecureAccessLinkService
         [$link, $token] = $this->createLink(SecureLinkPurpose::DocumentSigning, $request->matter_id,
             ['signing_request_id' => $request->id], $actor, $days);
 
-        return new IssuedLink($link, config('lexora.public_app_url').'/client-sign#'.$token, $replaced);
+        return new IssuedLink($link, $this->signingUrl($token), $replaced);
+    }
+
+    /**
+     * Phase 6 — registers the link carried by an e-mail that the SMTP server has ALREADY accepted.
+     *
+     * The token was generated in memory, put into the e-mail and sent; only now (inside the caller's
+     * transaction, request locked) is its hash stored and the previous usable link revoked. Consequences:
+     *  - a failed or abandoned send changes nothing: the previously delivered link keeps working;
+     *  - a request that was rolled back or became ineligible never gets a usable link
+     *    ($closedReason: the row is stored already revoked, so the client sees the lifecycle explanation);
+     *  - the raw token is never persisted anywhere (no queue, no outbox): only its SHA-256 hash, as for every link.
+     *
+     * @return array{0: SecureAccessLink, 1: int} the new link and the number of links it replaced
+     */
+    public function registerDeliveredLink(SecureLinkPurpose $purpose, DocumentRequest|SigningRequest $request, #[\SensitiveParameter] string $token,
+        ?User $actor, \DateTimeInterface $expiresAt, ?LinkRevocationReason $closedReason = null): array
+    {
+        $replaced = 0;
+        if ($closedReason === null) {
+            $replaced = $request instanceof DocumentRequest
+                ? $this->revokeUsableForRequest($request, LinkRevocationReason::Replaced, $actor)
+                : $this->revokeUsableForSigningRequest($request, LinkRevocationReason::Replaced, $actor);
+        }
+        $target = $request instanceof DocumentRequest ? ['document_request_id' => $request->id] : ['signing_request_id' => $request->id];
+        [$link] = $this->createLink($purpose, $request->matter_id, $target, $actor, 1, $token, $expiresAt);
+        if ($closedReason !== null) {
+            $this->revoke($link, $closedReason, $actor);
+            $link->refresh();
+        }
+
+        return [$link, $replaced];
+    }
+
+    /** Client-facing signing URL for a token (fragment, as for uploads). */
+    public function signingUrl(#[\SensitiveParameter] string $token): string
+    {
+        return config('lexora.public_app_url').'/client-sign#'.$token;
     }
 
     /** @return int number of links revoked */
@@ -103,10 +140,10 @@ class SecureAccessLinkService
      * @param  array<string, int>  $target
      * @return array{0: SecureAccessLink, 1: string} the link and its raw token (never stored)
      */
-    private function createLink(SecureLinkPurpose $purpose, int $matterId, array $target, User $actor, int $days): array
+    private function createLink(SecureLinkPurpose $purpose, int $matterId, array $target, ?User $actor, int $days, #[\SensitiveParameter] ?string $token = null, ?\DateTimeInterface $expiresAt = null): array
     {
         // A collision of two 256-bit random values is not a realistic event; the unique index guards it anyway.
-        $token = self::generateToken();
+        $token ??= self::generateToken();
         $link = new SecureAccessLink;
         $link->forceFill([
             'uuid' => Str::uuid()->toString(),
@@ -114,10 +151,10 @@ class SecureAccessLinkService
             'matter_id' => $matterId,
             ...$target,
             'token_hash' => self::hashToken($token),
-            'expires_at' => Carbon::now()->addDays($days),
+            'expires_at' => $expiresAt !== null ? Carbon::instance($expiresAt) : Carbon::now()->addDays($days),
             'max_uses' => 1,
             'successful_uses' => 0,
-            'created_by' => $actor->id,
+            'created_by' => $actor?->id, // null: issued by the reminder scheduler
         ])->save();
 
         return [$link, $token];

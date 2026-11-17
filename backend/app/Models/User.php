@@ -7,6 +7,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -60,5 +61,14 @@ class User extends Authenticatable
     public function notes(): HasMany
     {
         return $this->hasMany(MatterNote::class, 'author_id');
+    }
+
+    /**
+     * Phase 6: in-app notifications (Laravel's database channel creates them through this relation), newest
+     * first with microsecond precision. Scoped to this user — another user's notification is never reachable.
+     */
+    public function notifications(): MorphMany
+    {
+        return $this->morphMany(WorkspaceNotificationRecord::class, 'notifiable')->latest();
     }
 }
