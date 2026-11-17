@@ -174,7 +174,7 @@ export function CreateSigningDialog({
                     <input type="checkbox" className="mt-0.5 size-4 accent-[var(--color-primary)]" checked={issueLink} onChange={(e) => setIssueLink(e.target.checked)} disabled={pending} />
                     <span>
                       Generate the secure signing link now
-                      <span className="block text-xs text-muted-foreground">Links are not e-mailed automatically; you copy and send it yourself.</span>
+                      <span className="block text-xs text-muted-foreground">Copy it and share it yourself, or leave this off and use “Send signing invitation” on the request page to e-mail it.</span>
                     </span>
                   </label>
                   {issueLink ? (

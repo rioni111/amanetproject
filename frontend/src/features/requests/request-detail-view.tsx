@@ -753,7 +753,7 @@ function LinkCard({ request, links, onIssued }: { request: DocumentRequest; link
         ) : null}
 
         <p className="text-xs text-subtle-foreground">
-          Links are shown once when generated and are not emailed automatically. Each link allows one PDF upload for this request only.
+          A copied link is shown once, when generated — the manual alternative to Send e-mail. Each link allows one PDF upload for this request only; a new link (copied or e-mailed) replaces the previous one.
         </p>
 
         {links.length > 0 ? (

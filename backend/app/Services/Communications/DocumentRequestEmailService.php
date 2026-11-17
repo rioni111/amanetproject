@@ -93,7 +93,7 @@ class DocumentRequestEmailService
                 throw new ConflictHttpException('An e-mail for this request is being sent right now. Wait a moment and reload.');
             }
             if (! $automatic) {
-                $this->assertCooldown($request);
+                $this->assertCooldown($request, $type);
             }
 
             return [$this->deliveries->claim($attributes), false];
@@ -165,10 +165,15 @@ class DocumentRequestEmailService
         };
     }
 
-    private function assertCooldown(DocumentRequest $request): void
+    /**
+     * Double-send brake: the SAME kind of e-mail for the same request at most once per cooldown. A different,
+     * state-changing message (a correction right after the request e-mail) is not blocked.
+     */
+    private function assertCooldown(DocumentRequest $request, EmailCommunicationType $type): void
     {
         $seconds = max(0, (int) config('lexora.communications.manual_cooldown_seconds', 60));
         $recent = EmailDelivery::query()->where('document_request_id', $request->id)
+            ->where('communication_type', $type->value)
             ->where('status', EmailDeliveryStatus::Accepted->value)
             ->where('accepted_at', '>', Carbon::now()->subSeconds($seconds))
             ->exists();

@@ -61,6 +61,23 @@ class CorrectionEmailTest extends TestCase
         $this->asGuest()->publicView($token)->assertStatus(410); // the first link was used and stays used
     }
 
+    /** Found during manual verification: the double-send cooldown must not block a different message. */
+    #[Test]
+    public function a_correction_email_right_after_the_request_email_is_not_blocked_by_the_cooldown(): void
+    {
+        [$request] = $this->requestWithLink();
+        $this->adminPost($request, 'send-email')->assertCreated();
+        $token = $this->tokenFromMail($this->lastMail());
+        $submissionId = $this->submitAndStartReview($request, $token, 'First version');
+
+        $this->adminPost($request, 'request-correction', [
+            'submission_id' => $submissionId, 'lock_version' => $this->lockVersion($request), 'reason' => self::REASON, 'send_email' => true,
+        ])->assertOk()->assertJsonPath('email.status', 'accepted');
+        // A second correction e-mail within the cooldown is still a double send and is refused.
+        $this->adminPost($request, 'send-email')->assertConflict();
+        $this->assertSame(['document_request', 'document_correction'], EmailDelivery::query()->orderBy('id')->pluck('communication_type')->map->value->all());
+    }
+
     #[Test]
     public function a_failed_correction_email_keeps_the_decision_and_can_be_retried(): void
     {

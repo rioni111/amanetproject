@@ -340,7 +340,7 @@ function SigningLinkCard({ request, links, onIssued, onShare }: { request: Signi
             Revoke link
           </Button>
         ) : null}
-        <p className="text-xs text-subtle-foreground">Links are shown once and are not e-mailed by Lexora. One signature per link; viewing does not use it up.</p>
+        <p className="text-xs text-subtle-foreground">A copied link is shown once — the manual alternative to e-mailing the invitation. One signature per link; viewing does not use it up. A new link (copied or e-mailed) replaces the previous one.</p>
         {links.length > 0 ? (
           <details className="text-xs">
             <summary className="cursor-pointer font-medium text-muted-foreground">Link history ({links.length})</summary>
