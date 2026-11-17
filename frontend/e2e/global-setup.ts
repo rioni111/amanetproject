@@ -17,7 +17,9 @@ export default async function globalSetup() {
     execSync("php artisan migrate:fresh --seed --force --no-interaction", {
       cwd: path.resolve(__dirname, "../../backend"),
       stdio: "inherit",
-      env: { ...process.env, DB_DATABASE: E2E_DATABASE },
+      // Phase 7: the demo documents seeder stays off — the suites count records from the documented baseline,
+      // and this process does not use the E2E document storage folder.
+      env: { ...process.env, DB_DATABASE: E2E_DATABASE, LEXORA_DEMO_DOCUMENTS: "false" },
     });
     // The E2E API stores PDFs in its own private folder; start every run with an empty one.
     if (!/^e2e-[a-z0-9-]+$/.test(E2E_DOCUMENTS_DIR)) throw new Error(`Refusing to clear "${E2E_DOCUMENTS_DIR}".`);
