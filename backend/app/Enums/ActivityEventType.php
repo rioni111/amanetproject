@@ -58,9 +58,15 @@ enum ActivityEventType: string
     case DocumentReviewed = 'document.reviewed';              // reserved (catalogue)
     case ClientResponded = 'client.responded';                // reserved (catalogue)
 
-    // Phase 5–6: signing (catalogue only)
+    // Phase 5: electronic signing. Metadata never contains tokens, signature strokes, PDF content or paths.
     case SigningRequested = 'signing.requested';
-    case SigningViewed = 'signing.viewed';
-    case SigningStarted = 'signing.started';
-    case SigningCompleted = 'signing.completed';
+    case SigningLinkCreated = 'signing.link_created';
+    case SigningLinkRotated = 'signing.link_rotated';
+    case SigningLinkRevoked = 'signing.link_revoked';
+    case SigningInvitationShared = 'signing.invitation_shared';  // confirmed by the administrator (manual channel)
+    case SigningViewed = 'signing.viewed';                       // actor: client
+    case SigningStarted = 'signing.started';                     // actor: client
+    case SigningCompleted = 'signing.completed';                 // signature record committed
+    case SigningCancelled = 'signing.cancelled';
+    case DocumentSigned = 'document.signed';                     // the signed PDF version was added
 }
