@@ -195,10 +195,64 @@ the file's SHA-256 is recomputed; a mismatch answers **409** and is logged. A mi
 - **DocumentVersion**: `id, document_id, version_number, label ("v1"), kind, origin, original_filename, mime_type, file_size,
   sha256_checksum, uploaded_by {id, name}, is_current, created_at`. Storage disk and path are never serialised.
 
+## Endpoints (Phase 4 — client document requests)
+
+### Administrator (session + CSRF, like every endpoint above)
+
+| Method | Path | Body / notes | Success |
+| --- | --- | --- | --- |
+| GET | `/api/document-requests` | `search` (request title, matter number/title, client name), `status` (a status or `open`, `awaiting_client`, `awaiting_review`), `overdue=1`, `matter_id`, `client_id`, `sort` (`updated_at`, `created_at`, `due_at`, `title`, `last_submitted_at`, `matter_number`), `direction`, `page`, `per_page`. Outstanding views exclude archived matters (same rule as the dashboard). | 200 paginated `DocumentRequest` |
+| GET | `/api/matters/{matter}/document-requests` | same filters, scoped | 200 paginated |
+| POST | `/api/matters/{matter}/document-requests` | `title*`, `instructions*`, `requested_category*`, `due_date` (YYYY-MM-DD, not in the past), `issue_link` (bool), `link_expires_in_days` (1–30, default 7) | 201 `{ data, link: IssuedLink \| null }` |
+| GET | `…/document-requests/{documentRequest}` | request + latest submission + active link + approved version | 200 `{ data, links: SecureLink[] }` |
+| PATCH | `…/document-requests/{documentRequest}` | `title`, `instructions`, `requested_category`, `due_date`, `lock_version*`; open requests only | 200 |
+| POST | `…/{documentRequest}/links` | `expires_in_days`; 409 if a usable link exists | 201 `{ data, link }` |
+| POST | `…/{documentRequest}/links/rotate` | `expires_in_days`; revokes the current link, issues a new one | 201 `{ data, link }` |
+| POST | `…/{documentRequest}/links/{link}/revoke` | — | 200 `{ data, revoked_link }` |
+| GET | `…/{documentRequest}/submissions` | newest first, with versions | 200 `{ data: Submission[] }` |
+| POST | `…/{documentRequest}/start-review` | `submission_id*` (must be the latest), `lock_version*` | 200 |
+| POST | `…/{documentRequest}/approve` | `submission_id*`, `lock_version*` | 200 |
+| POST | `…/{documentRequest}/request-correction` | `submission_id*`, `lock_version*`, `reason*` (10–2000), `expires_in_days` | 200 `{ data, link }` |
+| POST | `…/{documentRequest}/cancel` | `lock_version` | 200 |
+
+Server-owned fields (`matter_id`, `client_id`, `status`, `document_id`, `document_version_id`, `approved_version_id`,
+`approved_at`, `reviewed_by`, `created_by`, `token`, `token_hash`, `max_uses`, `successful_uses`, `consumed_at`, `expires_at`,
+`purpose`, …) are **422 prohibited**. Invalid transitions are 422 on `status`; a stale `lock_version`, a newer submission, a closed
+request, an archived matter or an existing usable link are **409**. A request of another matter, a link of another request → **404**.
+
+- **DocumentRequest**: `id, matter_id, title, instructions, requested_category(+_label), status(+_label), is_open, is_overdue,
+  due_at, due_date, document_id, submissions_count, last_submitted_at, review_started_at, approved_at, approved_version {id,
+  version_number, label}, reviewed_by, cancelled_at, client {id, name}, matter {…}, document {…}, latest_submission, active_link,
+  created_by, created_at, updated_at, lock_version, allowed_actions {edit, issue_link, rotate_link, revoke_link, start_review,
+  approve, request_correction, cancel}`.
+- **SecureLink**: `id, purpose, state (active|expired|revoked|used), expires_at, revoked_at, revocation_reason(+_label),
+  consumed_at, first_opened_at, created_by, created_at` — never the token, its hash or the URL.
+- **IssuedLink** (only in the response that created it): `id, url, expires_at, is_local_url, shown_once: true`.
+- **Submission**: `id, submission_number, document_id, version (DocumentVersion), client_message, submitted_by, submitted_at,
+  review_status(+_label), review_started_at, reviewed_at, reviewed_by, correction_reason`.
+- Dashboard `stats` gained `requests_outstanding, requests_pending, requests_awaiting_review, requests_correction,
+  requests_overdue, requests_approved`; matter detail gained `requests {open, pending, awaiting_review, correction_requested,
+  approved, overdue}`.
+
+### Public client endpoints (no account, no cookies)
+
+Authorised only by the `X-Upload-Token` header (the token from the link's URL fragment). No session/CSRF middleware; rate
+limited; `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex`. A foreign `Origin` → 403.
+
+| Method | Path | Body / notes | Success |
+| --- | --- | --- | --- |
+| GET | `/api/public/document-upload` | — | 200 `{ data: { firm_name, title, instructions, category, category_label, due_date, is_overdue, expires_at, max_file_mb, is_correction, correction {reason, requested_at} \| null } }` |
+| POST | `/api/public/document-upload/submit` | multipart `file*` (same PDF rules as admin uploads), `message` (≤ 2000) | 201 `{ message, data: { submission_number, submitted_at, original_filename, file_size, is_correction } }` |
+
+Errors: `{ message, code }` — 404 `link_invalid` (unknown, malformed, wrong purpose, revoked/replaced — identical bodies),
+410 `link_expired` / `link_used` / `request_approved` / `request_cancelled` / `request_unavailable`, 429 `too_many_attempts`,
+422 validation (`errors.file`, `errors.message`). The token is checked before any file is parsed.
+
 ## Conventions for new endpoints (Phase 2+)
 
 - Route names `resource.action`, RESTful verbs, plural nouns (`/api/matters/{matter}/tasks`).
 - Validation in a dedicated Form Request; authorisation in the request's `authorize()` or `Gate::authorize()` against a policy.
 - Output only through API Resources; collections through a `PaginatedCollection` subclass.
 - Multi-table writes in `DB::transaction()`, appending an `ActivityLogger` event inside the same transaction.
-- Public (client-link) endpoints go under `/api/public/*` with their own rate limiter, token-hash lookup and minimal resources.
+- Public (client-link) endpoints go under `/api/public/*` with their own rate limiter, token-hash lookup and minimal resources;
+  they remove the stateful SPA middleware and read the token from a header, never from the URL (see Phase 4).

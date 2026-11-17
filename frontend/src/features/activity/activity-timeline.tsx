@@ -3,6 +3,15 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   Archive,
+  Ban,
+  Eye,
+  FileCheck2,
+  FileWarning,
+  Inbox,
+  Link2,
+  Link2Off,
+  RefreshCw,
+  Send,
   Download,
   FileStack,
   FileUp,
@@ -29,8 +38,8 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
 import { formatDate, formatTime } from "@/lib/utils/format";
-import { MATTER_STATUS_LABELS, PRIORITY_LABELS } from "@/lib/utils/labels";
-import type { ActivityEvent, MatterStatus, Paginated, Priority } from "@/types/api";
+import { MATTER_STATUS_LABELS, PRIORITY_LABELS, REQUEST_STATUS_LABELS } from "@/lib/utils/labels";
+import type { ActivityEvent, DocumentRequestStatus, MatterStatus, Paginated, Priority } from "@/types/api";
 
 /** Human labels and icons per event type — raw codes are never shown. */
 const EVENT_META: Record<string, { label: string; icon: LucideIcon; tone: string }> = {
@@ -54,6 +63,17 @@ const EVENT_META: Record<string, { label: string; icon: LucideIcon; tone: string
   "document.archived": { label: "Document archived", icon: Archive, tone: "text-muted-foreground bg-surface-muted" },
   "document.restored": { label: "Document restored", icon: ArchiveRestore, tone: "text-primary bg-primary-soft" },
   "document.downloaded": { label: "Document downloaded", icon: Download, tone: "text-muted-foreground bg-surface-muted" },
+  "document.requested": { label: "Document requested from client", icon: Inbox, tone: "text-info bg-info-soft" },
+  "document_request.updated": { label: "Document request updated", icon: PencilLine, tone: "text-info bg-info-soft" },
+  "document_request.cancelled": { label: "Document request cancelled", icon: Ban, tone: "text-muted-foreground bg-surface-muted" },
+  "link.created": { label: "Upload link generated", icon: Link2, tone: "text-info bg-info-soft" },
+  "link.rotated": { label: "Upload link replaced", icon: RefreshCw, tone: "text-info bg-info-soft" },
+  "link.revoked": { label: "Upload link revoked", icon: Link2Off, tone: "text-muted-foreground bg-surface-muted" },
+  "document.submitted": { label: "Client submitted a document", icon: Send, tone: "text-primary bg-primary-soft" },
+  "document.resubmitted": { label: "Client submitted a corrected document", icon: Send, tone: "text-primary bg-primary-soft" },
+  "document.review_started": { label: "Review started", icon: Eye, tone: "text-info bg-info-soft" },
+  "document.approved": { label: "Document approved", icon: FileCheck2, tone: "text-primary bg-primary-soft" },
+  "document.correction_requested": { label: "Correction requested", icon: FileWarning, tone: "text-warning bg-warning-soft" },
 };
 const FALLBACK = { label: "Activity", icon: CircleDot, tone: "text-muted-foreground bg-surface-muted" };
 
@@ -62,6 +82,9 @@ function transition(event: ActivityEvent): string | null {
   if (!from || !to) return null;
   if (event.event_type === "matter.priority_changed") {
     return `${PRIORITY_LABELS[from as Priority] ?? from} → ${PRIORITY_LABELS[to as Priority] ?? to}`;
+  }
+  if (event.metadata.request_id !== undefined && from in REQUEST_STATUS_LABELS && to in REQUEST_STATUS_LABELS) {
+    return `${REQUEST_STATUS_LABELS[from as DocumentRequestStatus]} → ${REQUEST_STATUS_LABELS[to as DocumentRequestStatus]}`;
   }
   if (event.event_type.startsWith("matter.")) {
     return `${MATTER_STATUS_LABELS[from as MatterStatus] ?? from} → ${MATTER_STATUS_LABELS[to as MatterStatus] ?? to}`;
@@ -131,6 +154,7 @@ export function ActivityTimeline({ matterId }: { matterId: number }) {
                     <p className="mt-0.5 text-[13px] break-words text-muted-foreground">{event.description}</p>
                     <p className="mt-1 text-xs text-subtle-foreground">
                       {event.actor.label ?? "System"}
+                      {event.actor.type === "client" ? <span className="text-subtle-foreground"> · client, via secure link</span> : null}
                       {change ? (
                         <span className="ml-2 rounded bg-surface-muted px-1.5 py-0.5 font-medium text-muted-foreground">{change}</span>
                       ) : null}

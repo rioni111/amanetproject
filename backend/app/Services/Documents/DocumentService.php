@@ -45,83 +45,111 @@ class DocumentService
     {
         $documentUuid = Str::uuid()->toString();
 
-        return $this->storeFile($file, function (string $stagingPath, string $sha256, string $versionUuid) use ($matter, $data, $actor, $file, $documentUuid) {
-            $finalPath = null;
-            try {
-                $finalPath = $this->storage->finalize($stagingPath, $matter->id, $documentUuid, $versionUuid);
+        return $this->persistUpload($file, $matter->id, $documentUuid, function (string $finalPath, string $sha256, string $versionUuid) use ($matter, $data, $actor, $file, $documentUuid) {
+            $matter = $this->lockWritableMatter($matter);
+            $this->rejectDuplicateInMatter($matter, $sha256);
 
-                return DB::transaction(function () use ($matter, $data, $actor, $file, $documentUuid, $versionUuid, $sha256, $finalPath) {
-                    $matter = $this->lockWritableMatter($matter);
-                    $this->rejectDuplicateInMatter($matter, $sha256);
+            $filename = $this->safeFilename($file->getClientOriginalName());
+            $document = $this->insertDocument($matter, $documentUuid, $data['title'] ?? $this->titleFromFilename($filename),
+                $data['description'] ?? null, DocumentCategory::from($data['category']), DocumentOrigin::Admin, $actor);
+            $version = $this->insertVersion($document, 1, $versionUuid, $filename, $finalPath, $file->getSize(), $sha256, DocumentOrigin::Admin, $actor->id, $actor->name);
+            $document->forceFill(['current_version_id' => $version->id, 'latest_version_number' => 1])->saveQuietly();
 
-                    $filename = $this->safeFilename($file->getClientOriginalName());
-                    $document = new Document;
-                    $document->forceFill([
-                        'uuid' => $documentUuid,
-                        'matter_id' => $matter->id,
-                        'title' => $data['title'] ?? $this->titleFromFilename($filename),
-                        'description' => $data['description'] ?? null,
-                        'category' => DocumentCategory::from($data['category']),
-                        'status' => DocumentStatus::Active,
-                        'origin' => DocumentOrigin::Admin, // server-assigned
-                        'uploaded_by' => $actor->id,
-                    ])->save();
+            $this->activity->record($matter, ActivityEventType::DocumentUploaded,
+                "Document uploaded: {$document->title} (v1).", $actor, $document,
+                $this->versionMetadata($document, $version));
+            $this->touchMatter($matter);
 
-                    $version = $this->insertVersion($document, 1, $versionUuid, $filename, $finalPath, $file->getSize(), $sha256, $actor);
-                    $document->forceFill(['current_version_id' => $version->id, 'latest_version_number' => 1])->saveQuietly();
-
-                    $this->activity->record($matter, ActivityEventType::DocumentUploaded,
-                        "Document uploaded: {$document->title} (v1).", $actor, $document,
-                        $this->versionMetadata($document, $version));
-                    $this->touchMatter($matter);
-
-                    return $document;
-                });
-            } catch (Throwable $e) {
-                $this->storage->discard($finalPath); // only this request's new file
-                throw $e;
-            }
+            return $document;
         });
     }
 
     /** Adds the next version. Concurrent uploads serialise on the document row lock. */
     public function addVersion(Matter $matter, Document $document, UploadedFile $file, User $actor, ?int $lockVersion = null): DocumentVersion
     {
-        return $this->storeFile($file, function (string $stagingPath, string $sha256, string $versionUuid) use ($matter, $document, $file, $actor, $lockVersion) {
-            $finalPath = null;
-            try {
-                $finalPath = $this->storage->finalize($stagingPath, $matter->id, $document->uuid, $versionUuid);
+        return $this->persistUpload($file, $matter->id, $document->uuid, function (string $finalPath, string $sha256, string $versionUuid) use ($matter, $document, $file, $actor, $lockVersion) {
+            $matter = $this->lockWritableMatter($matter);
+            $document = $this->lockDocument($matter, $document);
+            $document->assertLockVersion($lockVersion, self::STALE_MESSAGE);
+            $document->assertNotArchived();
+            $this->rejectSameAsCurrent($document, $sha256);
 
-                return DB::transaction(function () use ($matter, $document, $file, $actor, $lockVersion, $versionUuid, $sha256, $finalPath) {
-                    $matter = $this->lockWritableMatter($matter);
-                    $document = $this->lockDocument($matter, $document);
-                    $document->assertLockVersion($lockVersion, self::STALE_MESSAGE);
-                    $document->assertNotArchived();
+            $version = $this->appendVersion($document, $versionUuid, $this->safeFilename($file->getClientOriginalName()),
+                $finalPath, $file->getSize(), $sha256, DocumentOrigin::Admin, $actor->id, $actor->name);
 
-                    $current = $document->currentVersion;
-                    if ($current !== null && hash_equals($current->sha256_checksum, $sha256)) {
-                        throw ValidationException::withMessages([
-                            'file' => ["This PDF is identical to the current version ({$current->label()}). Upload the revised file."],
-                        ]);
-                    }
+            $this->activity->record($matter, ActivityEventType::DocumentVersionAdded,
+                "New version of {$document->title}: {$version->label()}.", $actor, $version,
+                $this->versionMetadata($document, $version));
+            $this->touchMatter($matter);
 
-                    $number = $document->latest_version_number + 1;
-                    $filename = $this->safeFilename($file->getClientOriginalName());
-                    $version = $this->insertVersion($document, $number, $versionUuid, $filename, $finalPath, $file->getSize(), $sha256, $actor);
-                    $document->forceFill(['current_version_id' => $version->id, 'latest_version_number' => $number])->save();
-
-                    $this->activity->record($matter, ActivityEventType::DocumentVersionAdded,
-                        "New version of {$document->title}: {$version->label()}.", $actor, $version,
-                        $this->versionMetadata($document, $version));
-                    $this->touchMatter($matter);
-
-                    return $version;
-                });
-            } catch (Throwable $e) {
-                $this->storage->discard($finalPath);
-                throw $e;
-            }
+            return $version;
         });
+    }
+
+    /**
+     * The shared, file-safe upload pipeline (also used by client submissions in Phase 4):
+     * hash → private staging copy verified byte-for-byte → move to a fresh final path → run
+     * `$transaction(finalPath, sha256, versionUuid)` inside ONE database transaction. If anything in
+     * the transaction fails, this request's new file is deleted; staging files are always removed.
+     *
+     * @template T
+     *
+     * @param  callable(string $finalPath, string $sha256, string $versionUuid): T  $transaction
+     * @return T
+     */
+    public function persistUpload(UploadedFile $file, int $matterId, string $documentUuid, callable $transaction): mixed
+    {
+        $sha256 = hash_file('sha256', $file->getRealPath());
+        $stagingPath = $this->storage->stage($file, $sha256);
+        $finalPath = null;
+        try {
+            $versionUuid = Str::uuid()->toString();
+            $finalPath = $this->storage->finalize($stagingPath, $matterId, $documentUuid, $versionUuid);
+
+            return DB::transaction(fn () => $transaction($finalPath, $sha256, $versionUuid));
+        } catch (Throwable $e) {
+            $this->storage->discard($finalPath); // only this request's new file — committed files are never touched
+            throw $e;
+        } finally {
+            $this->storage->discard($stagingPath); // already moved on success; removed on failure
+        }
+    }
+
+    /** Inserts a document row without a version (the caller adds v1 in the same transaction). */
+    public function insertDocument(Matter $matter, string $uuid, string $title, ?string $description, DocumentCategory $category, DocumentOrigin $origin, ?User $uploader): Document
+    {
+        $document = new Document;
+        $document->forceFill([
+            'uuid' => $uuid,
+            'matter_id' => $matter->id,
+            'title' => $title,
+            'description' => $description,
+            'category' => $category,
+            'status' => DocumentStatus::Active,
+            'origin' => $origin, // server-assigned
+            'uploaded_by' => $uploader?->id,
+        ])->save();
+
+        return $document;
+    }
+
+    /** Adds the next version to a document that the caller has locked (SELECT … FOR UPDATE). */
+    public function appendVersion(Document $document, string $uuid, string $filename, string $path, int $size, string $sha256, DocumentOrigin $origin, ?int $uploaderId, string $uploaderName): DocumentVersion
+    {
+        $number = $document->latest_version_number + 1;
+        $version = $this->insertVersion($document, $number, $uuid, $filename, $path, $size, $sha256, $origin, $uploaderId, $uploaderName);
+        $document->forceFill(['current_version_id' => $version->id, 'latest_version_number' => $number])->save();
+
+        return $version;
+    }
+
+    /** A new version must differ from the current one. */
+    public function rejectSameAsCurrent(Document $document, string $sha256, string $message = 'This PDF is identical to the current version (:version). Upload the revised file.'): void
+    {
+        $current = $document->currentVersion;
+        if ($current !== null && hash_equals($current->sha256_checksum, $sha256)) {
+            throw ValidationException::withMessages(['file' => [str_replace(':version', $current->label(), $message)]]);
+        }
     }
 
     /** @param array<string, mixed> $data validated: title, description, category, lock_version */
@@ -189,24 +217,7 @@ class DocumentService
 
     // ------------------------------------------------------------------ internals
 
-    /**
-     * @template T
-     *
-     * @param  callable(string $stagingPath, string $sha256, string $versionUuid): T  $commit
-     * @return T
-     */
-    private function storeFile(UploadedFile $file, callable $commit): mixed
-    {
-        $sha256 = hash_file('sha256', $file->getRealPath());
-        $stagingPath = $this->storage->stage($file, $sha256);
-        try {
-            return $commit($stagingPath, $sha256, Str::uuid()->toString());
-        } finally {
-            $this->storage->discard($stagingPath); // already moved on success; removed on failure
-        }
-    }
-
-    private function insertVersion(Document $document, int $number, string $uuid, string $filename, string $path, int $size, string $sha256, User $actor): DocumentVersion
+    private function insertVersion(Document $document, int $number, string $uuid, string $filename, string $path, int $size, string $sha256, DocumentOrigin $origin, ?int $uploaderId, string $uploaderName): DocumentVersion
     {
         $version = new DocumentVersion;
         $version->forceFill([
@@ -214,15 +225,15 @@ class DocumentService
             'document_id' => $document->id,
             'version_number' => $number,
             'kind' => DocumentVersionKind::Upload,
-            'origin' => DocumentOrigin::Admin,
+            'origin' => $origin,
             'original_filename' => $filename,
             'storage_disk' => $this->storage->diskName(),
             'storage_path' => $path,
             'mime_type' => 'application/pdf',
             'file_size' => $size,
             'sha256_checksum' => $sha256,
-            'uploaded_by' => $actor->id,
-            'uploaded_by_name' => $actor->name,
+            'uploaded_by' => $uploaderId,
+            'uploaded_by_name' => $uploaderName,
         ])->save();
 
         return $version;
@@ -290,7 +301,7 @@ class DocumentService
     }
 
     /** @return array<string, mixed> non-confidential facts only (no paths, no content) */
-    private function versionMetadata(Document $document, DocumentVersion $version): array
+    public function versionMetadata(Document $document, DocumentVersion $version): array
     {
         return [
             'document_id' => $document->id,
@@ -323,7 +334,7 @@ class DocumentService
         return Str::limit(trim(str_replace(['_', '-'], ' ', preg_replace('/\.pdf$/i', '', $filename) ?? '')), 255, '') ?: 'Untitled document';
     }
 
-    private function touchMatter(Matter $matter): void
+    public function touchMatter(Matter $matter): void
     {
         Matter::query()->whereKey($matter->getKey())->update(['updated_at' => Carbon::now()]);
     }

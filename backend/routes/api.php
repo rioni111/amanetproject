@@ -5,13 +5,18 @@ use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\DocumentFileController;
+use App\Http\Controllers\Api\DocumentRequestController;
+use App\Http\Controllers\Api\DocumentRequestWorkflowController;
 use App\Http\Controllers\Api\DocumentVersionController;
 use App\Http\Controllers\Api\MatterActivityController;
 use App\Http\Controllers\Api\MatterController;
 use App\Http\Controllers\Api\MatterLifecycleController;
 use App\Http\Controllers\Api\MatterNoteController;
 use App\Http\Controllers\Api\MatterTaskController;
+use App\Http\Controllers\Api\PublicDocumentUploadController;
+use App\Http\Middleware\AuthorizePublicUploadLink;
 use Illuminate\Support\Facades\Route;
+use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 /*
 |--------------------------------------------------------------------------
@@ -70,8 +75,44 @@ Route::middleware(['auth:sanctum', 'admin', 'throttle:api'])->group(function () 
             Route::get('{document}/versions/{version}/preview', [DocumentFileController::class, 'preview'])->name('versions.preview');
             Route::get('{document}/versions/{version}/download', [DocumentFileController::class, 'download'])->name('versions.download');
         });
+
+        // Phase 4 — client document requests. Request, link and submission ids are resolved through
+        // their parents, so a request of another matter or a link of another request is a 404.
+        Route::prefix('matters/{matter}/document-requests')->name('matters.document-requests.')->whereNumber(['matter', 'documentRequest', 'link'])->group(function () {
+            Route::get('/', [DocumentRequestController::class, 'index'])->name('index');
+            Route::post('/', [DocumentRequestController::class, 'store'])->name('store');
+            Route::get('{documentRequest}', [DocumentRequestController::class, 'show'])->name('show');
+            Route::patch('{documentRequest}', [DocumentRequestController::class, 'update'])->name('update');
+            Route::post('{documentRequest}/cancel', [DocumentRequestController::class, 'cancel'])->name('cancel');
+            Route::post('{documentRequest}/links', [DocumentRequestWorkflowController::class, 'issueLink'])->name('links.store');
+            Route::post('{documentRequest}/links/rotate', [DocumentRequestWorkflowController::class, 'rotateLink'])->name('links.rotate');
+            Route::post('{documentRequest}/links/{link}/revoke', [DocumentRequestWorkflowController::class, 'revokeLink'])->name('links.revoke');
+            Route::get('{documentRequest}/submissions', [DocumentRequestWorkflowController::class, 'submissions'])->name('submissions');
+            Route::post('{documentRequest}/start-review', [DocumentRequestWorkflowController::class, 'startReview'])->name('start-review');
+            Route::post('{documentRequest}/approve', [DocumentRequestWorkflowController::class, 'approve'])->name('approve');
+            Route::post('{documentRequest}/request-correction', [DocumentRequestWorkflowController::class, 'requestCorrection'])->name('request-correction');
+        });
     });
 
     // Workspace-wide document library (search, filters, sorting, pagination).
     Route::get('documents', [DocumentController::class, 'library'])->name('documents.index');
+
+    // Workspace-wide client document requests (outstanding requirements).
+    Route::get('document-requests', [DocumentRequestController::class, 'library'])->name('document-requests.index');
 });
+
+/*
+| Public client endpoints (Phase 4). A separate boundary from everything above:
+|  - no Sanctum session: the stateful-SPA middleware is removed, so no session is started, no admin
+|    cookie is read and CSRF (a protection for cookie-authenticated requests) does not apply;
+|  - authorisation is the purpose-scoped secure link in the X-Upload-Token header (never in the URL);
+|  - per-IP / per-token rate limits and an invalid-token lockout; minimal responses, no-store headers.
+*/
+Route::prefix('public/document-upload')->name('public.document-upload.')
+    ->withoutMiddleware([EnsureFrontendRequestsAreStateful::class])
+    ->group(function () {
+        Route::get('/', [PublicDocumentUploadController::class, 'show'])
+            ->middleware(['throttle:public-link', AuthorizePublicUploadLink::class])->name('show');
+        Route::post('submit', [PublicDocumentUploadController::class, 'submit'])
+            ->middleware(['throttle:public-upload', AuthorizePublicUploadLink::class])->name('submit');
+    });

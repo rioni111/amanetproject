@@ -5,11 +5,15 @@ namespace App\Providers;
 use App\Models\ActivityEvent;
 use App\Models\Client;
 use App\Models\Document;
+use App\Models\DocumentRequest;
+use App\Models\DocumentRequestSubmission;
 use App\Models\DocumentVersion;
 use App\Models\Matter;
 use App\Models\MatterNote;
+use App\Models\SecureAccessLink;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\Requests\PublicUploadLinkResolver;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -41,6 +45,9 @@ class AppServiceProvider extends ServiceProvider
             'activity_event' => ActivityEvent::class,
             'document' => Document::class,
             'document_version' => DocumentVersion::class,
+            'document_request' => DocumentRequest::class,
+            'document_request_submission' => DocumentRequestSubmission::class,
+            'secure_access_link' => SecureAccessLink::class,
         ]);
 
         Password::defaults(fn () => $this->app->isProduction()
@@ -59,5 +66,15 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('login', fn (Request $request) => Limit::perMinute(20)->by('login-ip:'.$request->ip()));
 
         RateLimiter::for('api', fn (Request $request) => Limit::perMinute(240)->by($request->user()?->id ?: $request->ip()));
+
+        // Public, token-authorised client endpoints (no account, no session). Opening the link is
+        // bounded per IP; submissions per IP and per token. Repeated unknown tokens from one IP are
+        // additionally locked out by PublicUploadLinkResolver (enumeration defence).
+        RateLimiter::for('public-link', fn (Request $request) => Limit::perMinute((int) config('lexora.public_links.views_per_minute', 60))
+            ->by('public-link-ip:'.$request->ip()));
+        RateLimiter::for('public-upload', fn (Request $request) => [
+            Limit::perMinute((int) config('lexora.public_links.uploads_per_minute', 10))->by('public-upload-ip:'.$request->ip()),
+            Limit::perMinute(5)->by('public-upload-token:'.hash('sha256', (string) $request->header(PublicUploadLinkResolver::HEADER))),
+        ]);
     }
 }

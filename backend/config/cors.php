@@ -17,7 +17,8 @@ return [
 
     'allowed_origins_patterns' => [],
 
-    'allowed_headers' => ['Accept', 'Content-Type', 'X-Requested-With', 'X-XSRF-TOKEN'],
+    // X-Upload-Token: the client's secure upload token (public endpoints only; sent without cookies).
+    'allowed_headers' => ['Accept', 'Content-Type', 'X-Requested-With', 'X-XSRF-TOKEN', 'X-Upload-Token'],
 
     'exposed_headers' => ['Retry-After'],
 
