@@ -6,8 +6,10 @@ use App\Enums\ActivityEventType;
 use App\Enums\MatterStatus;
 use App\Models\ActivityEvent;
 use App\Models\DocumentRequest;
+use App\Models\DocumentVersion;
 use App\Models\Matter;
 use App\Models\SecureAccessLink;
+use App\Models\SignatureRecord;
 use App\Models\SigningRequest;
 use App\Models\User;
 use Illuminate\Database\QueryException;
@@ -103,6 +105,42 @@ class SigningRequestTest extends TestCase
         $this->createSigning($archived, $document)->assertStatus(409);
         $this->forgetUser()->postJson("/api/matters/{$matter->id}/signing-requests", [])->assertUnauthorized();
         $this->assertSame(0, SigningRequest::query()->count());
+    }
+
+    /**
+     * PDF compatibility limits (report §5): files the engine cannot process faithfully are accepted as documents
+     * (Phase 3 rules) but refused for signing — on eligibility, request creation and direct admin signing — with
+     * an explanation, and nothing is created or changed.
+     */
+    #[Test]
+    public function pdfs_the_engine_cannot_sign_faithfully_are_refused_with_an_explanation(): void
+    {
+        $matter = $this->signingMatter();
+        $cases = [
+            'form' => [PdfFactory::withFeatures('/AcroForm 10 0 R', [10 => '<< /Fields [] >>']), 'This PDF contains form fields.'],
+            'annotations' => [PdfFactory::bytes(['Linked'], '/Annots [] '), 'This PDF contains annotations'],
+            'digital signature' => [PdfFactory::withFeatures('', [10 => '<< /Type /Sig /Filter /Adobe.PPKLite /ByteRange [0 10 20 10] /Contents <00> >>']),
+                'This PDF already contains a digital signature.'],
+            'xref stream' => [PdfFactory::xrefStream(), 'This PDF uses a compressed format (PDF 1.5+ cross-reference streams)'],
+            'broken xref' => [PdfFactory::brokenCrossReference(), 'This PDF could not be read by the signing engine.'],
+        ];
+        foreach ($cases as $label => [$bytes, $message]) {
+            $document = $this->uploadDocument($matter, $bytes, "Unsupported {$label}");
+            $version = $document->currentVersion;
+            $base = "/api/matters/{$matter->id}/documents/{$document->id}";
+
+            $eligibility = $this->actingAsAdmin($this->signingAdmin())->getJson("{$base}/versions/{$version->id}/signing-eligibility")->assertUnprocessable();
+            $this->assertStringStartsWith($message, $eligibility->json('errors.document.0'), $label);
+            $this->createSigning($matter, $document)->assertUnprocessable()->assertJsonValidationErrors(['document']);
+            $payload = $this->signaturePayload(['document_version_id' => $version->id]);
+            unset($payload['confirmed_name']);
+            $this->actingAsAdmin($this->signingAdmin())->postJson("{$base}/sign", $payload)->assertUnprocessable();
+
+            $this->assertSame(1, DocumentVersion::query()->where('document_id', $document->id)->count(), "{$label}: no signed version");
+            $this->assertSame($version->sha256_checksum, hash('sha256', Storage::disk('documents')->get($version->storage_path)), "{$label}: original unchanged");
+        }
+        $this->assertSame(0, SigningRequest::query()->count());
+        $this->assertSame(0, SignatureRecord::query()->count());
     }
 
     #[Test]
