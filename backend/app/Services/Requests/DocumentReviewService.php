@@ -82,10 +82,15 @@ class DocumentReviewService
         });
     }
 
-    /** Rejects the latest submission for correction and returns the fresh upload link for the client. */
-    public function requestCorrection(Matter $matter, DocumentRequest $request, int $submissionId, string $reason, User $actor, ?int $lockVersion, ?int $expiresInDays): IssuedLink
+    /**
+     * Rejects the latest submission for correction and returns the fresh upload link for the client.
+     * $issueLink = false (Phase 6 "send the correction by e-mail"): no link is revealed here; the e-mail that
+     * follows carries a new link, registered only once the mail server accepts it. If that e-mail fails, the
+     * correction decision stands and the administrator can retry or generate a link to copy.
+     */
+    public function requestCorrection(Matter $matter, DocumentRequest $request, int $submissionId, string $reason, User $actor, ?int $lockVersion, ?int $expiresInDays, bool $issueLink = true): ?IssuedLink
     {
-        return DB::transaction(function () use ($matter, $request, $submissionId, $reason, $actor, $lockVersion, $expiresInDays) {
+        return DB::transaction(function () use ($matter, $request, $submissionId, $reason, $actor, $lockVersion, $expiresInDays, $issueLink) {
             [$matter, $request] = $this->requests->lock($matter, $request, $lockVersion);
             $this->assertTransition($request, DocumentRequestStatus::CorrectionRequested);
             $submission = $this->latestSubmission($request, $submissionId, SubmissionReviewStatus::InReview);
@@ -105,7 +110,7 @@ class DocumentReviewService
                 $actor, $request, [...$this->metadata($request, $submission, DocumentRequestStatus::UnderReview), 'reason_recorded' => true]);
 
             // Fresh, independent upload opportunity (any leftover link is revoked by issue()).
-            return $this->requests->issue($matter, $request, $actor, $expiresInDays, false);
+            return $issueLink ? $this->requests->issue($matter, $request, $actor, $expiresInDays, false) : null;
         });
     }
 

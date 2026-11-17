@@ -48,7 +48,7 @@ class DocumentRequestResource extends JsonResource
                 : null),
             'reviewed_by' => $this->whenLoaded('reviewer', fn () => $this->reviewer ? ['id' => $this->reviewer->id, 'name' => $this->reviewer->name] : null),
             'cancelled_at' => $this->cancelled_at?->toIso8601String(),
-            'client' => $this->whenLoaded('client', fn () => ['id' => $this->client->id, 'name' => $this->client->name]),
+            'client' => $this->whenLoaded('client', fn () => array_filter(['id' => $this->client->id, 'name' => $this->client->name, 'email' => $this->client->email ?? null], fn ($v) => $v !== null)),
             'matter' => $this->whenLoaded('matter', fn () => [
                 'id' => $this->matter->id,
                 'matter_number' => $this->matter->matter_number,
@@ -76,6 +76,8 @@ class DocumentRequestResource extends JsonResource
                 'approve' => $writable && $this->status === DocumentRequestStatus::UnderReview && $latest?->review_status === SubmissionReviewStatus::InReview,
                 'request_correction' => $writable && $this->status === DocumentRequestStatus::UnderReview && $latest?->review_status === SubmissionReviewStatus::InReview,
                 'cancel' => $writable,
+                // Phase 6: e-mail the request / correction to the client (server picks the client's address).
+                'send_email' => $writable && $this->status->acceptsUploads(),
             ],
         ];
     }

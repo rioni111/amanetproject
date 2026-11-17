@@ -28,6 +28,8 @@ class DocumentRequestActionRequest extends FormRequest
             'submission_id' => [$decision ? 'required' : 'prohibited', 'integer', 'min:1'],
             'reason' => [$correction ? 'required' : 'prohibited', 'string', 'min:10', 'max:2000', $this->notBlank()],
             'expires_in_days' => $this->expiryRules(),
+            // Phase 6: e-mail the correction request to the client instead of revealing a link to copy.
+            'send_email' => [$correction ? 'nullable' : 'prohibited', 'boolean'],
             ...$this->prohibitedServerFields(),
         ];
     }

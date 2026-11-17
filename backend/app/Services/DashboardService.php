@@ -3,11 +3,13 @@
 namespace App\Services;
 
 use App\Enums\DocumentRequestStatus;
+use App\Enums\EmailDeliveryStatus;
 use App\Enums\MatterStatus;
 use App\Enums\SigningStatus;
 use App\Enums\TaskStatus;
 use App\Models\Client;
 use App\Models\DocumentRequest;
+use App\Models\EmailDelivery;
 use App\Models\Matter;
 use App\Models\SigningRequest;
 use App\Models\Task;
@@ -76,6 +78,14 @@ class DashboardService
             ->toBase()
             ->first();
 
+        // E-mail communication (Phase 6), one aggregate query: in progress now, and outcomes in the last 30 days.
+        $emailCounts = EmailDelivery::query()
+            ->selectRaw('count(*) filter (where status = ?) as sending', [EmailDeliveryStatus::Sending->value])
+            ->selectRaw('count(*) filter (where status = ? and accepted_at >= ?) as accepted', [EmailDeliveryStatus::Accepted->value, $now->copy()->subDays(30)])
+            ->selectRaw('count(*) filter (where status = ? and failed_at >= ?) as failed', [EmailDeliveryStatus::Failed->value, $now->copy()->subDays(30)])
+            ->toBase()
+            ->first();
+
         return [
             'stats' => [
                 'total_clients' => Client::query()->count(),
@@ -93,6 +103,9 @@ class DashboardService
                 'requests_approved' => (int) $requestCounts->approved,
                 'signatures_pending' => (int) $signingCounts->active,
                 'signatures_signed' => (int) $signingCounts->signed,
+                'emails_sending' => (int) $emailCounts->sending,
+                'emails_accepted_30d' => (int) $emailCounts->accepted,
+                'emails_failed_30d' => (int) $emailCounts->failed,
             ],
             'status_breakdown' => array_map(fn (MatterStatus $status) => [
                 'status' => $status->value,

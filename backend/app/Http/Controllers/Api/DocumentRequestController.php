@@ -81,7 +81,7 @@ class DocumentRequestController extends Controller
         return DocumentRequest::query()
             ->with([
                 'matter:id,matter_number,title,status,client_id',
-                'client:id,name',
+                'client:id,name,email', // Phase 6: shown as the e-mail recipient (administrators only)
                 'document:id,title,status,latest_version_number',
                 'latestSubmission.version',
                 'usableLink.creator:id,name',
