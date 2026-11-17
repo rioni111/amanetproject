@@ -145,13 +145,18 @@ class SecureLinkTest extends TestCase
     public function a_signing_purpose_token_is_unknown_to_the_upload_endpoints(): void
     {
         [$request] = $this->requestWithLink();
-        $token = SecureAccessLinkService::generateToken();
-        $link = new SecureAccessLink;
-        $link->forceFill([
-            'uuid' => (string) Str::uuid(), 'purpose' => 'document_signing', 'matter_id' => $request->matter_id,
-            'document_request_id' => $request->id, 'token_hash' => hash('sha256', $token), 'expires_at' => now()->addDay(),
-            'created_at' => now()->subMinute(),
-        ])->save();
+        // Phase 5 made signing links real (they must target a signing request), so this uses a genuine,
+        // active signing link of the same matter instead of an inserted row.
+        $document = $this->actingAsAdmin($this->admin())->post("/api/matters/{$request->matter_id}/documents",
+            ['file' => PdfFactory::upload('nda.pdf', ['NDA']), 'title' => 'NDA', 'category' => 'contracts'], ['Accept' => 'application/json'])
+            ->assertCreated()->json('data');
+        $url = (string) $this->postJson("/api/matters/{$request->matter_id}/signing-requests", [
+            'document_id' => $document['id'], 'document_version_id' => $document['current_version']['id'],
+            'signer_type' => 'client', 'signer_name' => 'Northwind Signer', 'issue_link' => true,
+        ])->assertCreated()->json('link.url');
+        $this->assertStringContainsString('/client-sign#', $url);
+        $token = substr($url, strrpos($url, '#') + 1);
+        $this->assertSame('document_signing', SecureAccessLink::query()->where('token_hash', hash('sha256', $token))->value('purpose')?->value);
 
         $this->publicView($token)->assertNotFound()->assertJsonPath('code', 'link_invalid');
         $this->publicSubmit($token, PdfFactory::upload())->assertNotFound();

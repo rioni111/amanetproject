@@ -65,6 +65,9 @@ class DashboardSummaryTest extends TestCase
             'requests_correction' => 0,
             'requests_overdue' => 0,
             'requests_approved' => 0,
+            // Phase 5 counters (no signing requests in these fixtures).
+            'signatures_pending' => 0,
+            'signatures_signed' => 0,
         ]);
         $response->assertJsonPath('data.upcoming_window_days', 14);
         $response->assertJsonPath('data.upcoming_deadlines.*.matter_number', ['T-1', 'T-2']);
@@ -132,6 +135,9 @@ class DashboardSummaryTest extends TestCase
                 'requests_correction' => 0,
                 'requests_overdue' => 0,
                 'requests_approved' => 0,
+                // Phase 5 counters (no signing requests in these fixtures).
+                'signatures_pending' => 0,
+                'signatures_signed' => 0,
             ]);
     }
 }
