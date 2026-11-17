@@ -1,6 +1,7 @@
 # Phase 6 Implementation Report — E-mail Delivery, Reminders and Administrator Notifications
 
-Branch `feature/phase-6-email-notifications` (from `main` at `d40e602`). Not merged into `main`, not pushed.
+Branch `feature/phase-6-email-notifications` (from `main` at `d40e602`). After explicit authorisation it was merged into
+`main` (merge commit `e19d3b8`) and pushed to the private repository, together with the feature branch.
 All clients, matters, documents and addresses used in development and verification are **fictional**.
 
 ---
@@ -560,13 +561,18 @@ memory and links were clicked inside the delivered e-mails.
   | `2f0ed64` | Phase 6 frontend: e-mail actions, delivery history, notification centre |
   | `217b955` | Phase 6 end-to-end tests with real SMTP, and Windows verification of the e-mail inbox |
   | `f69af6b` | E-mail cooldown applies to the same type of message only; link wording (**code verified by the final run**) |
-  | *(next)* | Phase 6 documentation and implementation report: docs only |
+  | `8b02a4a` | Phase 6 documentation and implementation report: docs only |
 
-- **HEAD** is the documentation commit on top of `f69af6b`; its hash is in the final response, because a commit cannot
-  contain its own hash. All code at HEAD equals `f69af6b`.
+- **Branch head** `8b02a4a`: all code there equals `f69af6b`.
 - **Working tree:** clean after the documentation commit.
 - **Not committed (gitignored):** `.env`, logs, Mailpit data (containers have no volume), test results.
-- **Merge status:** not merged and not pushed, pending authorisation.
+- **Merge status:**
+  - At report time, the branch was neither merged nor pushed.
+  - After the user's explicit authorisation ("Merge and push"), it was merged with `--no-ff` into `main` as `e19d3b8`. The
+    merge was clean, because `main` had not moved since `d40e602`.
+  - The merged tree is identical to `8b02a4a`, so the final verification at `f69af6b` (code) applies to it unchanged.
+  - `main` and `feature/phase-6-email-notifications` were then pushed to the private `origin` without force.
+  - The feature branch was kept.
 
 ## 24. Phase 7 Readiness
 
@@ -747,4 +753,5 @@ boundaries, not failed criteria:
 - SPF/DKIM/DMARC not configured;
 - bearer-link authentication.
 
-Phase 6 is complete on `feature/phase-6-email-notifications`. It is **not merged** and **not pushed**.
+Phase 6 is complete. It was merged into `main` (`e19d3b8`) and pushed after explicit authorisation. Phase 7 has not been
+started.

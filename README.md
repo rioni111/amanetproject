@@ -3,7 +3,7 @@
 A legal matter-management and document-signing platform built for the **Amanet Full Stack Engineer take-home assignment**.
 "Lexora Workspace" is the product identity used for the UI. All clients and matters are **fictional**.
 
-> **Status: Phase 6 of 7 complete** (branch `feature/phase-6-email-notifications`, not yet merged) — real SMTP e-mail
+> **Status: Phase 6 of 7 complete** (merged into `main`) — real SMTP e-mail
 > delivery of document requests, corrections and signing invitations, scheduled reminders and in-app administrator
 > notifications, on top of in-house electronic PDF signing, client document requests, the PDF library with version
 > control, and matter, client, task, note and activity management. Reports: [Phase 1](docs/PHASE_1_IMPLEMENTATION_REPORT.md) ·
