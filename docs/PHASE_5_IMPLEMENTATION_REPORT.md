@@ -1,6 +1,7 @@
 # Phase 5 Implementation Report — Electronic PDF Signing
 
-Branch `feature/phase-5-pdf-signing` (from `main` at `d4fbdbe`). Not merged into `main`; not pushed.
+Branch `feature/phase-5-pdf-signing` (from `main` at `d4fbdbe`). After explicit authorisation it was merged into `main`
+(merge commit `735fbe8`) and pushed to the private repository, together with the feature branch.
 All data used during development and verification is **fictional**.
 
 ---
@@ -687,7 +688,13 @@ which were left unsigned by aborted script runs. LEX-2026-0015 was not created b
 - Local history note: two of the fix commits were first made with a mixed-up file set, because a quoting error in
   PowerShell left files staged. Both were local and unpushed; they were re-split with `git reset --soft` into the three
   correct commits above. No content was lost, and nothing was ever pushed.
-- Merge status: **not merged** into `main` and **not pushed**; both wait for explicit authorisation.
+- Merge status:
+  - At report time, the branch was neither merged nor pushed.
+  - After the user's explicit authorisation ("Merge and push"), it was merged with `--no-ff` into `main` as `735fbe8`
+    (parents `d4fbdbe` and `5ec19ca`).
+  - The merged tree is byte-identical to `5ec19ca`, so the final verification at `afd7aa8` (code) applies to it unchanged.
+  - `main` and `feature/phase-5-pdf-signing` were then pushed to the private `origin` without force. The feature branch
+    is preserved.
 
 ## 22. Phase 6 Readiness
 
@@ -863,5 +870,5 @@ Evidence key: **U** = PHPUnit (section 16), **E** = Playwright (section 17), **M
 
 **Overall:** every mandatory criterion passed with direct evidence, and no criterion is marked failed or unverified. Two
 stated limits remain: accessibility was verified without an automated axe audit or a screen-reader session, and some
-PDF formats are refused by design (section 5). Phase 5 is complete on `feature/phase-5-pdf-signing`; it is **not merged**
-into `main` and **not pushed**.
+PDF formats are refused by design (section 5). Phase 5 is complete. It was merged into `main` (`735fbe8`) and pushed
+after explicit authorisation (section 21).

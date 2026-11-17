@@ -8,7 +8,7 @@ Seven-day delivery plan. ✅ = implemented and verified · 🟡 = foundation onl
 | 2 | Matter, Client, Task & Notes Management | ✅ Complete ([report](PHASE_2_IMPLEMENTATION_REPORT.md)) |
 | 3 | Document Management & Version Control | ✅ Complete ([report](PHASE_3_IMPLEMENTATION_REPORT.md)) |
 | 4 | Secure Client Document Requests & Review | ✅ Complete ([report](PHASE_4_IMPLEMENTATION_REPORT.md)) |
-| 5 | Electronic Document Signing | ✅ Complete on branch `feature/phase-5-pdf-signing` ([report](PHASE_5_IMPLEMENTATION_REPORT.md)) |
+| 5 | Electronic Document Signing | ✅ Complete, merged into `main` ([report](PHASE_5_IMPLEMENTATION_REPORT.md)) |
 | 6 | Email, Notifications, Signing Progress & Activity | ⬜ Planned |
 | 7 | Testing, Security Hardening, UI Polish & Delivery | ⬜ Planned |
 

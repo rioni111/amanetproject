@@ -3,7 +3,7 @@
 A legal matter-management and document-signing platform built for the **Amanet Full Stack Engineer take-home assignment**.
 "Lexora Workspace" is the product identity used for the UI. All clients and matters are **fictional**.
 
-> **Status: Phase 5 of 7 complete** (on branch `feature/phase-5-pdf-signing`) — in-house electronic PDF signing by the
+> **Status: Phase 5 of 7 complete** — in-house electronic PDF signing by the
 > administrator or the client (secure link, no account), on top of client document requests, the PDF library with version
 > control, and matter, client, task, note and activity management. Reports: [Phase 1](docs/PHASE_1_IMPLEMENTATION_REPORT.md) ·
 > [Phase 2](docs/PHASE_2_IMPLEMENTATION_REPORT.md) · [Phase 3](docs/PHASE_3_IMPLEMENTATION_REPORT.md) ·
