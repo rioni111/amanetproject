@@ -86,7 +86,8 @@ app/
 ├── Policies/                                 MatterPolicy (view/create/update/archive/restore), ClientPolicy (+create/update/delete)
 ├── Providers/AppServiceProvider.php          rate limiters, morph map, strict models, password rules, gates
 ├── Services/                                 DashboardService, ActivityLogger, MatterService (lifecycle), MatterNumberGenerator,
-│                                             TaskService, MatterNoteService, ClientService
+│                                             TaskService, MatterNoteService, ClientService,
+│                                             Documents/ (DocumentService, DocumentStorage, PdfInspector)
 └── Support/LegalDate.php                     calendar-date ⇄ timestamptz conversion in the firm's time zone
 ```
 
@@ -144,7 +145,8 @@ src/
 │   └── shared/                  page-header, status/priority badges, deadline, data-table, pagination, search-input, toaster,
 │                                empty/error/loading states, confirm-dialog, form-field, form-alert, brand-mark, client-avatar
 ├── features/                    auth, dashboard, clients (list, form dialog, detail), matters (list, form dialog, actions,
-│                                detail workspace), tasks (panel), notes (panel), activity (timeline)
+│                                detail workspace), tasks (panel), notes (panel), activity (timeline), documents (library,
+│                                matter tab, detail + version history, upload dialog, PDF.js viewer)
 ├── hooks/                       use-url-filters, use-now
 ├── lib/api/                     client (get/post/patch/delete), errors, config, invalidate
 ├── lib/                         forms (server errors → fields, submit guard)   lib/utils/  cn, format, labels
@@ -162,17 +164,37 @@ Design system: tokens in `src/app/globals.css` (warm off-white `#FAFAF8`, charco
 colours; all text pairs ≥ 4.5:1). Geist Sans/Mono/Serif are bundled locally. `prefers-reduced-motion` disables animation. Security
 headers (CSP, `X-Frame-Options: DENY`, `nosniff`, Referrer-Policy) are set in `next.config.ts`.
 
-## 6. Future document processing (Phase 3 — design)
+## 6. Document management (Phase 3 — implemented)
 
-- PDFs are stored on a **private** disk (`storage/app/private/documents/{matter_id}/{uuid}.pdf`), never under `public/`. Filenames on
-  disk are random UUIDs; the original name is metadata only.
-- Upload validation: MIME sniffing (`application/pdf`), extension, size limit, and a `%PDF-` header check; SHA-256 checksum stored per
-  version for integrity and de-duplication.
-- `documents` holds the logical document; `document_versions` holds immutable files (`version_number` unique per document). A new upload
-  creates a new version; previous versions remain downloadable.
-- Preview/download go through authorised controller actions that stream the file (`Content-Disposition`, `X-Content-Type-Options`).
-  Possessing a document ID is never sufficient — the policy checks the matter.
+```
+Browser ──multipart (XHR, real progress)──► POST /api/matters/{m}/documents      (Form Request: size, .pdf, PdfInspector)
+                                              │
+                                    DocumentService
+                                      1. SHA-256 of the upload
+                                      2. stage → _staging/{uuid}.part, verify size + SHA-256   (DocumentStorage)
+                                      3. move → {matter}/{document_uuid}/{version_uuid}.pdf      (never overwritten)
+                                      4. DB transaction: lock matter (→ document), duplicate check, version number,
+                                         documents + document_versions rows, activity event
+                                      5. failure → delete only this request's new file; staging always removed
+Browser ◄── fetch (session cookie) ── GET …/versions/{v}/preview|download  (scoped bindings, policy, exists, SHA-256 re-check)
+   └─ PDF.js 6 renders pages to <canvas> only (no annotation/script layer) inside the app's CSP
+```
 
+- **Storage**: Laravel disk `documents` = `storage/app/private/documents` (local driver, `serve => false`; Laravel's
+  `local` disk also had serving switched off). Never under `public/`. `DOCUMENTS_STORAGE_DIR` selects the folder (the E2E
+  server uses `e2e-documents`, PHPUnit fakes the disk). Paths are server-generated and constrained by a database CHECK.
+- **Integrity**: versions are immutable (trigger), unique per document, current version enforced by a composite FK; every
+  file read re-verifies the stored SHA-256.
+- **Concurrency**: version numbers come from `documents.latest_version_number`, incremented under the document's row lock
+  (same lock order as every other matter write: matter, then child); the unique constraint is the backstop.
+- **Validation**: byte-level (`PdfInspector`): libmagic MIME, `%PDF-` signature, `%%EOF`/`startxref` (truncation),
+  `/Encrypt` (unsupported), size limit (`DOCUMENTS_MAX_UPLOAD_MB`, PHP limits raised to 25M/30M by setup). Not a malware scanner.
+- **Audit**: uploads, versions, metadata changes, archive/restore and downloads are recorded in the same transaction pattern
+  as Phase 2 (downloads are appended after authorisation); inline previews are not, to keep the timeline meaningful.
+
+Prepared for later phases: `origin` (`admin`/`client`) and `kind` (`upload`/`signed`) on versions; signing requests will
+reference an immutable `document_versions.id`; client submissions (Phase 4) arrive as new documents/versions with
+`origin = client` through the same service and storage.
 ## 7. Future secure-link flow (Phase 4 — design)
 
 ```

@@ -3,8 +3,9 @@
 A legal matter-management and document-signing platform built for the **Amanet Full Stack Engineer take-home assignment**.
 "Lexora Workspace" is the product identity used for the UI. All clients and matters are **fictional**.
 
-> **Status: Phase 2 of 7 complete** — matter, client, task and internal-note management with activity history, on top of the
-> Phase 1 foundation. Reports: [Phase 1](docs/PHASE_1_IMPLEMENTATION_REPORT.md) · [Phase 2](docs/PHASE_2_IMPLEMENTATION_REPORT.md) ·
+> **Status: Phase 3 of 7 complete** — secure PDF document library with version control, on top of matter, client, task, note
+> and activity management. Reports: [Phase 1](docs/PHASE_1_IMPLEMENTATION_REPORT.md) · [Phase 2](docs/PHASE_2_IMPLEMENTATION_REPORT.md) ·
+> [Phase 3](docs/PHASE_3_IMPLEMENTATION_REPORT.md) ·
 > roadmap in [`docs/implementation-phases.md`](docs/implementation-phases.md).
 
 ---
@@ -18,10 +19,11 @@ A legal matter-management and document-signing platform built for the **Amanet F
 | Clients | List (search name/email/phone/reference, type filter, sorting, pagination), create, edit, detail page with matters, delete only while a client has no matters |
 | Matters | List with search, status/priority/deadline/client filters, sorting, quick actions; create (unique `LEX-YYYY-NNNN` number), edit, status transitions, priority, deadlines, archive & restore |
 | Matter workspace | `/matters/{id}`: overview, **tasks** (create, edit, complete/reopen, delete), **internal notes** (create, edit, delete — admin-only), **activity timeline** |
-| Data integrity | Each change and its history entry in one transaction; optimistic concurrency (409 on stale edits); append-only history |
+| Documents | `/documents` library and a Documents tab per matter: upload PDFs (private storage, SHA-256), preview in the app (PDF.js), download, **immutable version history** (preview/download any version), metadata edit, archive; search by title, file name, matter, client and category |
+| Data integrity | Each change and its history entry in one transaction; optimistic concurrency (409 on stale edits); append-only history; immutable document versions |
 | UI | Responsive desktop/tablet/mobile, accessible dialogs and tabs, loading/empty/error states, success toasts, WCAG 2.2 AA-minded |
 
-Planned for later phases: PDF documents & versions (3), secure client upload requests (4), in-house PDF e-signing (5),
+Planned for later phases: secure client upload requests (4), in-house PDF e-signing (5),
 email + notifications + signing progress (6), hardening and polish (7).
 
 ## Technology
@@ -172,6 +174,8 @@ cd frontend && npm run test:e2e
 ```
 
 Create the E2E database once (`setup-windows.bat` does it): `CREATE DATABASE amanet_e2e OWNER amanet;`
+The E2E API stores uploaded PDFs in `backend/storage/app/private/e2e-documents` (wiped by global-setup), never in the
+development document storage.
 
 Latest verified results: [Phase 2 report](docs/PHASE_2_IMPLEMENTATION_REPORT.md#12-testing-results) (and the
 [Phase 1 report](docs/PHASE_1_IMPLEMENTATION_REPORT.md#6-functional-verification)).
@@ -190,10 +194,21 @@ Latest verified results: [Phase 2 report](docs/PHASE_2_IMPLEMENTATION_REPORT.md#
 
 | Saving returns **409** | Someone (or another tab) changed the record after you opened it, or the matter is archived. Reload; restore archived matters before editing. |
 
-## Known limitations (Phase 2)
+## Documents (Phase 3)
+
+- PDFs are stored privately in `backend/storage/app/private/documents` (not web-accessible) and only served through
+  authorised API endpoints. Maximum size: `DOCUMENTS_MAX_UPLOAD_MB` (default 20); PHP's `upload_max_filesize`/`post_max_size`
+  must be larger (`setup-windows.bat` sets 25M/30M in Laragon's `php.ini`).
+- After `npm install` the PDF viewer's worker and fonts are copied to `frontend/public/pdfjs` automatically (`postinstall`).
+- Search covers document metadata (title, original file name, matter, client, category) — not the text inside PDFs.
+
+## Known limitations
 
 - The matter form's client picker and the matters client filter list the first 100 clients alphabetically (search-as-you-type picker planned).
 - Archived matters are shown in the default (unfiltered) matters list, as in Phase 1; use the status filter to narrow.
+- Uploaded PDFs are validated structurally (type, signature, completeness, no encryption) but **not scanned for malware**.
+- The viewer does not load PDF.js's optional WebAssembly decoders, so rare JPEG 2000 / JBIG2 images may not render in the
+  preview (the download is unaffected).
 - Documents, client requests, signing, email and notifications are **designed and documented but not implemented**.
 - The "Coming soon" navigation items are intentionally disabled.
 - One role (`admin`) exists; the `admin` middleware and policies are in place for future roles.

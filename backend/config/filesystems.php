@@ -33,8 +33,21 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // Never serve private files over HTTP (Laravel's signed /storage route stays disabled).
+            'serve' => false,
             'throw' => false,
+            'report' => false,
+        ],
+
+        // Phase 3: private legal PDFs. Not web-accessible, never served directly: every read goes
+        // through an authorised controller. DOCUMENTS_STORAGE_DIR selects a sub-folder of
+        // storage/app/private (the isolated E2E server uses its own folder).
+        'documents' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/'.(preg_match('/^[a-z0-9_-]+$/', (string) env('DOCUMENTS_STORAGE_DIR', 'documents')) ? env('DOCUMENTS_STORAGE_DIR', 'documents') : 'documents')),
+            'visibility' => 'private',
+            'serve' => false,
+            'throw' => true,
             'report' => false,
         ],
 

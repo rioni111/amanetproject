@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-import { API_URL, E2E_API_PORT, E2E_DATABASE, E2E_WEB_PORT, FRONTEND_URL, SESSION_COOKIE } from "./e2e/env";
+import { API_URL, E2E_API_PORT, E2E_DATABASE, E2E_DOCUMENTS_DIR, E2E_WEB_PORT, FRONTEND_URL, SESSION_COOKIE } from "./e2e/env";
 
 /**
  * End-to-end tests run against the REAL stack: Next.js → Laravel → PostgreSQL — on dedicated ports
@@ -52,6 +52,8 @@ export default defineConfig({
         FRONTEND_URL,
         SANCTUM_STATEFUL_DOMAINS: `localhost:${E2E_WEB_PORT}`,
         SESSION_COOKIE,
+        // Uploaded PDFs go to their own private folder, never the development document storage.
+        DOCUMENTS_STORAGE_DIR: E2E_DOCUMENTS_DIR,
       },
     },
     {

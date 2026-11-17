@@ -47,6 +47,7 @@ class MatterResource extends JsonResource
             'completed_tasks_count' => $this->whenHas('completed_tasks_count', fn () => (int) $this->completed_tasks_count),
             'tasks_count' => $this->whenCounted('tasks'),
             'notes_count' => $this->whenCounted('notes'),
+            'documents_count' => $this->whenHas('documents_count', fn () => (int) $this->documents_count),
         ];
     }
 }

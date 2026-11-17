@@ -1,4 +1,14 @@
-import type { ClientType, MatterStatus, Priority, TaskStatus } from "@/types/api";
+import type { ClientType, DocumentCategory, MatterStatus, Priority, TaskStatus } from "@/types/api";
+
+export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
+  contracts: "Contracts",
+  agreements: "Agreements",
+  correspondence: "Correspondence",
+  evidence: "Evidence",
+  court_documents: "Court documents",
+  identification: "Identification",
+  other: "Other",
+};
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   todo: "To do",

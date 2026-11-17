@@ -3,6 +3,9 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\DocumentController;
+use App\Http\Controllers\Api\DocumentFileController;
+use App\Http\Controllers\Api\DocumentVersionController;
 use App\Http\Controllers\Api\MatterActivityController;
 use App\Http\Controllers\Api\MatterController;
 use App\Http\Controllers\Api\MatterLifecycleController;
@@ -51,5 +54,24 @@ Route::middleware(['auth:sanctum', 'admin', 'throttle:api'])->group(function () 
             ->whereNumber(['matter', 'task']);
         Route::apiResource('matters.notes', MatterNoteController::class)->except('show')
             ->whereNumber(['matter', 'note']);
+
+        // Phase 3 — documents. Each id is resolved through its parent (matter → document → version),
+        // so a document of another matter or a version of another document is a 404.
+        Route::prefix('matters/{matter}/documents')->name('matters.documents.')->whereNumber(['matter', 'document', 'version'])->group(function () {
+            Route::get('/', [DocumentController::class, 'index'])->name('index');
+            Route::post('/', [DocumentController::class, 'store'])->name('store');
+            Route::get('{document}', [DocumentController::class, 'show'])->name('show');
+            Route::patch('{document}', [DocumentController::class, 'update'])->name('update');
+            Route::post('{document}/archive', [DocumentController::class, 'archive'])->name('archive');
+            Route::post('{document}/restore', [DocumentController::class, 'restore'])->name('restore');
+            Route::get('{document}/versions', [DocumentVersionController::class, 'index'])->name('versions.index');
+            Route::post('{document}/versions', [DocumentVersionController::class, 'store'])->name('versions.store');
+            Route::get('{document}/versions/{version}', [DocumentVersionController::class, 'show'])->name('versions.show');
+            Route::get('{document}/versions/{version}/preview', [DocumentFileController::class, 'preview'])->name('versions.preview');
+            Route::get('{document}/versions/{version}/download', [DocumentFileController::class, 'download'])->name('versions.download');
+        });
     });
+
+    // Workspace-wide document library (search, filters, sorting, pagination).
+    Route::get('documents', [DocumentController::class, 'library'])->name('documents.index');
 });

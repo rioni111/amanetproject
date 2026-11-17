@@ -3,6 +3,9 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   Archive,
+  Download,
+  FileStack,
+  FileUp,
   ArchiveRestore,
   ArrowRightLeft,
   CheckCircle2,
@@ -45,6 +48,12 @@ const EVENT_META: Record<string, { label: string; icon: LucideIcon; tone: string
   "note.added": { label: "Internal note added", icon: NotebookPen, tone: "text-muted-foreground bg-surface-muted" },
   "note.updated": { label: "Internal note edited", icon: NotebookPen, tone: "text-muted-foreground bg-surface-muted" },
   "note.deleted": { label: "Internal note deleted", icon: Trash2, tone: "text-danger bg-danger-soft" },
+  "document.uploaded": { label: "Document uploaded", icon: FileUp, tone: "text-primary bg-primary-soft" },
+  "document.version_added": { label: "New document version added", icon: FileStack, tone: "text-primary bg-primary-soft" },
+  "document.updated": { label: "Document details updated", icon: PencilLine, tone: "text-info bg-info-soft" },
+  "document.archived": { label: "Document archived", icon: Archive, tone: "text-muted-foreground bg-surface-muted" },
+  "document.restored": { label: "Document restored", icon: ArchiveRestore, tone: "text-primary bg-primary-soft" },
+  "document.downloaded": { label: "Document downloaded", icon: Download, tone: "text-muted-foreground bg-surface-muted" },
 };
 const FALLBACK = { label: "Activity", icon: CircleDot, tone: "text-muted-foreground bg-surface-muted" };
 

@@ -161,6 +161,40 @@ Client object: `id, name, client_type, email, phone, address, reference_number, 
 
 Definitions of each figure: [architecture.md § Dashboard definitions](architecture.md#dashboard-definitions).
 
+## Endpoints (Phase 3 — documents)
+
+All require an administrator session; writes need the CSRF header. Uploads are `multipart/form-data`.
+
+| Method | Path | Body / notes | Success |
+| --- | --- | --- | --- |
+| GET | `/api/documents` | library: `search` (title, original file name, matter number/title, client name, category label — metadata only), `category`, `status` (`active` default, `archived`, `all`), `matter_id`, `client_id`, `uploaded_from`/`uploaded_to` (YYYY-MM-DD), `sort` (`updated_at`, `created_at`, `title`, `matter_number`, `category`), `direction`, `page`, `per_page` | 200 paginated `Document` |
+| GET | `/api/matters/{matter}/documents` | same filters, scoped to the matter | 200 paginated |
+| POST | `/api/matters/{matter}/documents` | `file*` (PDF ≤ `DOCUMENTS_MAX_UPLOAD_MB`), `category*`, `title` (defaults to the file name), `description` | 201 `{ data: Document }` with `current_version` v1 |
+| GET | `/api/matters/{matter}/documents/{document}` | document + current version + matter/client | 200 |
+| PATCH | `/api/matters/{matter}/documents/{document}` | `title`, `category`, `description`, `lock_version` (a `file` → 422: upload a version instead) | 200 |
+| POST | `…/documents/{document}/archive` · `/restore` | `lock_version`; versions are never deleted | 200 |
+| GET | `…/documents/{document}/versions` | newest first, `is_current` flag | 200 paginated `DocumentVersion` |
+| POST | `…/documents/{document}/versions` | `file*`, `lock_version`; identical to the current version → 422 | 201 `{ data: DocumentVersion }` |
+| GET | `…/versions/{version}` | metadata | 200 |
+| GET | `…/versions/{version}/preview` | PDF bytes, `Content-Disposition: inline` (not recorded) | 200 `application/pdf` |
+| GET | `…/versions/{version}/download` | PDF bytes, `attachment`; recorded as `document.downloaded` | 200 `application/pdf` |
+
+Every id is resolved through its parent (matter → document → version): a document of another matter or a version of another
+document is **404**. Writes to an archived matter or archived document are **409**. Upload validation errors are 422 on `file`
+(not a PDF, damaged/truncated, encrypted, empty, too large, wrong extension, duplicate); a body above PHP's `post_max_size`
+answers **413** JSON.
+
+File responses carry `Content-Type: application/pdf`, `Content-Disposition` (RFC 6266/5987: ASCII fallback + UTF-8 name),
+`X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store`, `Content-Security-Policy: default-src 'none'; sandbox`,
+`X-Frame-Options: DENY`, `Cross-Origin-Resource-Policy: same-site`, `X-Document-Version`, `X-Document-Sha256`. Before streaming,
+the file's SHA-256 is recomputed; a mismatch answers **409** and is logged. A missing file answers 404 without revealing paths.
+
+- **Document**: `id, matter_id, title, description, category, category_label, status, origin, versions_count, current_version,
+  uploaded_by {id, name}, matter {id, matter_number, title, status, client {id, name}}, archived_at, created_at, updated_at,
+  lock_version`.
+- **DocumentVersion**: `id, document_id, version_number, label ("v1"), kind, origin, original_filename, mime_type, file_size,
+  sha256_checksum, uploaded_by {id, name}, is_current, created_at`. Storage disk and path are never serialised.
+
 ## Conventions for new endpoints (Phase 2+)
 
 - Route names `resource.action`, RESTful verbs, plural nouns (`/api/matters/{matter}/tasks`).

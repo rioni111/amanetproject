@@ -186,6 +186,56 @@ Event types emitted from Phase 2 (always in the same transaction as the change):
 `task.completed`, `task.reopened`, `task.deleted`, `note.added`, `note.updated`, `note.deleted`, and client events
 `client.created`, `client.updated` (changed field names only), `client.deleted` with `matter_id = null`.
 
+Phase 3 adds `document.uploaded`, `document.version_added` (metadata: document/version ids, version number, category, file
+name, size, SHA-256 — never paths or content), `document.updated` (changed fields; description only as `changed: true`),
+`document.archived`, `document.restored` and `document.downloaded` (audit of file access; inline previews are not recorded).
+Catalogued for Phase 4–6: `document.requested`, `document.submitted`, `document.reviewed`, `document.correction_requested`,
+`signing.requested|viewed|started|completed`, `link.revoked`.
+
+### `documents` (Phase 3)
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | bigint PK | |
+| uuid | uuid **unique** | storage directory name (server-generated) |
+| matter_id | FK → matters | `RESTRICT` (documents are part of the legal record); index `(matter_id, status)` |
+| title | varchar(255) | non-blank CHECK |
+| description | text null | |
+| category | varchar(30) | `contracts, agreements, correspondence, evidence, court_documents, identification, other` (CHECK), indexed |
+| status | varchar(20) default `active` | lifecycle only: `active, archived` (CHECK); `CHECK ((status='archived') = (archived_at IS NOT NULL))` |
+| origin | varchar(20) default `admin` | `admin, client` (CHECK) — server-assigned; `client` arrives with Phase 4 requests |
+| current_version_id | bigint null | composite FK `(current_version_id, id) → document_versions (id, document_id)`: the current version always belongs to this document |
+| latest_version_number | integer default 0 | counter incremented under the document row lock; `CHECK ((current_version_id IS NULL) = (latest_version_number = 0))` |
+| uploaded_by | FK → users null | `SET NULL` |
+| archived_at | timestamptz null | |
+| lock_version | integer default 1 | optimistic concurrency for metadata edits |
+| created_at / updated_at | timestamptz | both indexed (library sorts) |
+
+Review status (Phase 4) and signing status (Phase 5) are deliberately **not** columns here: they belong to requests and signing
+requests, which reference specific versions. A document never becomes "signed" because of how its PDF looks.
+
+### `document_versions` (Phase 3, immutable)
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | bigint PK | `UNIQUE (id, document_id)` — target of the composite current-version FK |
+| uuid | uuid **unique** | stored file name |
+| document_id | FK → documents | `RESTRICT` |
+| version_number | integer | `CHECK >= 1`, **`UNIQUE (document_id, version_number)`** |
+| kind | varchar(20) default `upload` | `upload, signed` (CHECK) — Phase 5 adds signed outputs as new versions |
+| origin | varchar(20) | `admin, client` (CHECK) |
+| original_filename | varchar(255) | sanitised client name (metadata only), non-blank, indexed for search |
+| storage_disk | varchar(50) | `documents` |
+| storage_path | varchar(500) **unique** | `CHECK (storage_path ~ '^[0-9]+/[0-9a-f-]{36}/[0-9a-f-]{36}\.pdf$')` — only the server-generated layout, no traversal |
+| mime_type | varchar(100) | `CHECK (mime_type = 'application/pdf')` |
+| file_size | bigint | `CHECK > 0` |
+| sha256_checksum | char(64) | `CHECK (~ '^[0-9a-f]{64}$')`, indexed (duplicate detection) |
+| uploaded_by / uploaded_by_name | bigint null / varchar(200) | uploader snapshot **without FK** (an `ON DELETE SET NULL` would be an UPDATE, which immutability forbids) |
+| created_at | timestamptz | no `updated_at` |
+
+Immutability: trigger `document_versions_no_update_delete` rejects every `UPDATE`/`DELETE`; the model throws too. Versions are
+only ever added. Phase 5 `signing_requests.document_version_id` can therefore reference the exact bytes that were signed, and the
+signed result becomes a further version (`kind = signed`) without overwriting the source.
 ## Seed data
 
 `DemoWorkspaceSeeder` (development only, idempotent — keyed on `reference_number`, `matter_number`, `(matter_id, title)`,
@@ -197,8 +247,6 @@ seeding time. Emails use reserved `example.*` domains and `555-01xx` phone numbe
 
 | Table | Phase | Key columns & constraints |
 | --- | --- | --- |
-| `documents` | 3 | `matter_id` FK RESTRICT, `title`, `category`, `review_status` (`pending, approved, changes_requested`), `current_version_id`, `created_by` |
-| `document_versions` | 3 | `document_id` FK, `version_number` (**unique per document**), `disk`, `path` (private, UUID name), `original_name`, `mime_type` (CHECK pdf), `size_bytes`, `sha256` (64 hex), `uploaded_by_type/id`, immutable (append-only trigger) |
 | `document_requests` | 4 | `matter_id`, `client_id`, `title`, `instructions`, `status` (`open, submitted, changes_requested, accepted, cancelled`), `due_at`, `fulfilled_document_id` |
 | `secure_access_links` | 4 | `token_hash` char(64) **unique** (SHA-256 of a 256-bit random token; plaintext never stored), `purpose` (`upload_document, sign_document`), `linkable_type/id` (the one resource it unlocks), `expires_at` NOT NULL, `revoked_at`, `max_uses`, `use_count`, `last_used_at`, `created_by` |
 | `signing_requests` | 5 | `document_version_id` FK (the exact PDF signed), `matter_id`, **one signer** (`signer_name`, `signer_email`, optional `client_id`), `signer_type` (`admin, client`), `status` (`sent, viewed, started, signed, revoked, expired`), `sent_at, viewed_at, started_at, signed_at`, `signed_document_version_id` FK, `access_link_id`; partial unique index preventing two active requests for the same version |

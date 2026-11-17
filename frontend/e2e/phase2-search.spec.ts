@@ -41,7 +41,6 @@ test("rapid filter and search changes keep every filter active", async ({ page }
   await expect(page.getByLabel("Deadline")).toHaveValue("overdue");
   await expect(page.getByLabel("Status")).toHaveValue("active");
   await expect(table.getByRole("row")).toHaveCount(2);
-
 });
 
 test("pagination and sorting work against the API", async ({ page }) => {

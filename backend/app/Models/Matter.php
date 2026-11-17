@@ -62,6 +62,11 @@ class Matter extends Model
         return $this->hasMany(MatterNote::class);
     }
 
+    public function documents(): HasMany
+    {
+        return $this->hasMany(Document::class);
+    }
+
     public function activityEvents(): HasMany
     {
         return $this->hasMany(ActivityEvent::class);

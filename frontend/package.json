@@ -10,7 +10,8 @@
     "typecheck": "next typegen && tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"e2e/**/*.ts\"",
     "test:e2e": "playwright test",
-    "check": "npm run lint && npm run typecheck && npm run build"
+    "check": "npm run lint && npm run typecheck && npm run build",
+    "postinstall": "node scripts/copy-pdfjs-assets.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^7.0.6",
@@ -24,6 +25,7 @@
     "geist": "^1.9.2",
     "lucide-react": "^1.73.0",
     "next": "16.4.6",
+    "pdfjs-dist": "6.5.438",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-hook-form": "^7.92.0",
@@ -43,6 +45,6 @@
     "typescript": "^5"
   },
   "engines": {
-    "node": ">=20.9"
+    "node": "\u003e=20.9"
   }
 }

@@ -54,6 +54,12 @@ try {
         else { $content = $content + "`r`nextension=$ext`r`n" }
         Write-Log "Enabled extension: $ext"
     }
+    # Phase 3: PDF uploads up to 20 MB (DOCUMENTS_MAX_UPLOAD_MB) need PHP limits above that.
+    foreach ($limit in @(@('upload_max_filesize', '25M'), @('post_max_size', '30M'))) {
+        $pattern = "(?m)^\s*;?\s*$($limit[0])\s*=.*$"
+        if ([regex]::IsMatch($content, $pattern)) { $content = [regex]::Replace($content, $pattern, "$($limit[0]) = $($limit[1])") }
+        else { $content = $content + "`r`n$($limit[0]) = $($limit[1])`r`n" }
+    }
     if ($content -ne $original) { Set-Content -Path $ini -Value $content -NoNewline -Encoding ASCII; Write-Log "php.ini updated: $ini" 'Green' }
     else { Write-Log 'php.ini already configured.' 'Green' }
 

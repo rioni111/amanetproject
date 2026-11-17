@@ -34,3 +34,6 @@ npm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 e2e/.auth/
+
+# PDF.js worker + fonts copied on install (scripts/copy-pdfjs-assets.mjs)
+/public/pdfjs/

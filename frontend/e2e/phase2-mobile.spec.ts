@@ -9,7 +9,13 @@ test("matter and client pages fit a phone screen", async ({ page }) => {
   const matter = await createMatter(page, { description: "A".repeat(400) });
   const clients = await apiGet<{ data: { id: number }[] }>(page.request, "/api/clients?search=CL-1001");
 
-  for (const path of [`/matters/${matter.id}`, `/matters/${matter.id}?tab=tasks`, `/matters/${matter.id}?tab=notes`, `/matters/${matter.id}?tab=activity`, `/clients/${clients.data[0].id}`]) {
+  for (const path of [
+    `/matters/${matter.id}`,
+    `/matters/${matter.id}?tab=tasks`,
+    `/matters/${matter.id}?tab=notes`,
+    `/matters/${matter.id}?tab=activity`,
+    `/clients/${clients.data[0].id}`,
+  ]) {
     await page.goto(path);
     await page.waitForLoadState("networkidle");
     await expectNoHorizontalOverflow(page, path);

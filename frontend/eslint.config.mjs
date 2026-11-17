@@ -13,6 +13,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // PDF.js worker + fonts copied from node_modules on install (vendor code).
+    "public/pdfjs/**",
     // Generated test artefacts:
     "playwright-report/**",
     "test-results/**",

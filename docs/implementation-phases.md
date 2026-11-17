@@ -6,7 +6,7 @@ Seven-day delivery plan. ✅ = implemented and verified · 🟡 = foundation onl
 | --- | --- | --- |
 | 1 | Foundation, Architecture, Database, Authentication & UI | ✅ Complete |
 | 2 | Matter, Client, Task & Notes Management | ✅ Complete ([report](PHASE_2_IMPLEMENTATION_REPORT.md)) |
-| 3 | Document Management & Version Control | ⬜ Planned |
+| 3 | Document Management & Version Control | ✅ Complete ([report](PHASE_3_IMPLEMENTATION_REPORT.md)) |
 | 4 | Secure Client Document Requests & Review | ⬜ Planned |
 | 5 | Electronic Document Signing | ⬜ Planned |
 | 6 | Email, Notifications, Signing Progress & Activity | ⬜ Planned |
@@ -34,10 +34,15 @@ Seven-day delivery plan. ✅ = implemented and verified · 🟡 = foundation onl
 - ✅ 51 new PHPUnit tests (incl. a multi-process numbering race) and 15 new Playwright tests on an isolated E2E database
 - Search across documents follows with documents in Phase 3
 
-## 3. Document Management & Version Control — ⬜
+## 3. Document Management & Version Control — ✅
 
-- `documents`, `document_versions`; private storage; PDF validation; SHA-256 checksums
-- Upload, in-app preview, authorised download, version history
+- ✅ `documents`, immutable `document_versions` (trigger), composite current-version FK, concurrency-safe numbering
+- ✅ Private `documents` disk (not web-served), staged uploads with SHA-256 verification and failure cleanup
+- ✅ Byte-level PDF validation (finfo, signature, truncation, encryption), configurable 20 MB limit, duplicate policy
+- ✅ Upload (matter tab and library), PDF.js preview (pages, navigation, zoom), authorised download with integrity check
+- ✅ Version history (preview/download any version), metadata edit, document archive/restore, archived matters read-only
+- ✅ Library `/documents`: search (title, file name, matter, client, category), filters, sorting, pagination in the URL
+- ✅ Document events in the append-only timeline (downloads audited); 30 PHPUnit + 6 Playwright tests
 
 ## 4. Secure Client Document Requests & Review — ⬜
 
