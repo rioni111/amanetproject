@@ -288,3 +288,54 @@ test("double submission and retries produce exactly one signed version", async (
   const versions = await apiGet<{ data: { kind: string }[] }>(page.request, `/api/matters/${matter.id}/documents/${document.id}/versions`);
   expect(versions.data.filter((v) => v.kind === "signed")).toHaveLength(1);
 });
+
+// Scenario L — accessibility: the whole signing step works with the keyboard alone (WAI-ARIA radio group,
+// labelled and keyboard-movable placement box, consent with Space, submit with Enter).
+test("the administrator signs with the keyboard alone", async ({ page }) => {
+  const matter = await createMatter(page);
+  const { document } = await uploadPdfApi(page, matter, `Keyboard agreement ${uniqueSuffix()}`, ["Keyboard agreement"]);
+  await page.goto(`/matters/${matter.id}/documents/${document.id}`);
+  await page.getByRole("button", { name: "Sign PDF" }).focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: /^Sign / });
+  await expect(dialog.locator('[data-testid="signing-page"] canvas[data-rendered="true"]')).toBeVisible();
+
+  // Signature method: one Tab stop (the checked option); arrow keys move and select.
+  const draw = dialog.getByRole("radio", { name: "Draw" });
+  const typed = dialog.getByRole("radio", { name: "Type" });
+  await expect(draw).toHaveAttribute("tabindex", "0");
+  await expect(typed).toHaveAttribute("tabindex", "-1");
+  await draw.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(typed).toHaveAttribute("aria-checked", "true");
+  await expect(typed).toBeFocused();
+  await dialog.getByLabel("Type your full name").focus();
+  await page.keyboard.type("Elena Marsh");
+
+  // Placement box: labelled, focusable, moved with the arrow keys (Shift = 5 % steps).
+  const box = dialog.getByTestId("signature-box");
+  await expect(box).toHaveAccessibleName(/Use the arrow keys to move it/);
+  const left = () => box.evaluate((b: HTMLElement) => Number.parseFloat(b.style.left));
+  await box.focus();
+  const before = await left();
+  await page.keyboard.press("Shift+ArrowLeft");
+  await expect.poll(left).toBeCloseTo(before - 5, 1);
+  const placedX = (await left()) / 100;
+
+  // Consent with Space (never pre-checked), submit with Enter.
+  const consent = dialog.getByTestId("consent-checkbox");
+  await expect(consent).not.toBeChecked();
+  await consent.focus();
+  await page.keyboard.press("Space");
+  await expect(consent).toBeChecked();
+  await dialog.getByRole("button", { name: "Sign document" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`/matters/${matter.id}/signatures/\\d+$`));
+  await expect(page.getByTestId("signing-status")).toHaveText("Signed");
+
+  const detail = (await signingDetail(page, matter.id, Number(page.url().split("/").pop()))) as unknown as {
+    evidence: { signature_method: string; placement: { x: number } };
+  };
+  expect(detail.evidence.signature_method).toBe("typed");
+  expect(detail.evidence.placement.x).toBeCloseTo(placedX, 3); // stored exactly where the keyboard put it
+});

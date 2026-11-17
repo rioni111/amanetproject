@@ -31,9 +31,16 @@ export function SignatureInputPanel({
   disabled?: boolean;
 }) {
   const [method, setMethod] = React.useState<"drawn" | "typed">(value?.method ?? "drawn");
+  const radios = React.useRef<Partial<Record<"drawn" | "typed", HTMLButtonElement | null>>>({});
+  const choose = (id: "drawn" | "typed") => {
+    if (id === method) return;
+    setMethod(id);
+    onChange(null);
+  };
 
   return (
     <div className="flex flex-col gap-3">
+      {/* WAI-ARIA radio group: one Tab stop (the checked option); arrow keys move and select. */}
       <div role="radiogroup" aria-label="Signature method" className="inline-flex w-fit rounded-lg border border-border bg-surface-muted p-0.5">
         {(
           [
@@ -43,13 +50,21 @@ export function SignatureInputPanel({
         ).map(([id, label, Icon]) => (
           <button
             key={id}
+            ref={(el) => {
+              radios.current[id] = el;
+            }}
             type="button"
             role="radio"
             aria-checked={method === id}
+            tabIndex={method === id ? 0 : -1}
             disabled={disabled}
-            onClick={() => {
-              setMethod(id);
-              onChange(null);
+            onClick={() => choose(id)}
+            onKeyDown={(e) => {
+              if (!["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"].includes(e.key)) return;
+              e.preventDefault();
+              const next = id === "drawn" ? "typed" : "drawn"; // two options: every arrow moves to the other one
+              choose(next);
+              radios.current[next]?.focus();
             }}
             className={cn(
               "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
