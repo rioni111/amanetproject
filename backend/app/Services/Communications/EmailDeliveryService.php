@@ -228,6 +228,12 @@ class EmailDeliveryService
         if ($e instanceof RfcComplianceException) {
             return EmailFailureCategory::InvalidRecipient;
         }
+        // Phase 7 (P7-014): no SMTP reply code at all ("… but got empty code") means the server closed the connection
+        // without answering — a connection failure, not an unknown one. Which of the two exceptions Symfony throws
+        // for a dropped connection depends on timing, so both must map to the same category.
+        if ($e instanceof UnexpectedResponseException && (int) $e->getCode() < 100) {
+            return EmailFailureCategory::Connection;
+        }
         if ($e instanceof UnexpectedResponseException || ($e instanceof TransportExceptionInterface && $e->getCode() >= 400)) {
             $code = (int) $e->getCode();
             $text = strtolower($e->getMessage());
