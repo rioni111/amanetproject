@@ -216,6 +216,8 @@ class DocumentRequestConcurrencyTest extends TestCase
             $this->db->table('documents')->whereIn('id', $documents)->delete();
             $this->db->table('matters')->whereIn('id', $matters)->delete();
             $this->db->table('clients')->where('id', $this->created['client'])->delete();
+            // Phase 6: client uploads notify the (committed) race administrator.
+            $this->db->table('notifications')->where('notifiable_type', 'user')->where('notifiable_id', $this->created['user'])->delete();
             $this->db->table('users')->where('id', $this->created['user'])->delete();
             foreach (['activity_events activity_events_no_update_delete', 'document_versions document_versions_no_update_delete', 'document_request_submissions document_request_submissions_guard'] as $t) {
                 [$table, $trigger] = explode(' ', $t);

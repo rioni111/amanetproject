@@ -68,6 +68,9 @@ class DashboardSummaryTest extends TestCase
             // Phase 5 counters (no signing requests in these fixtures).
             'signatures_pending' => 0,
             'signatures_signed' => 0,
+            'emails_sending' => 0,
+            'emails_accepted_30d' => 0,
+            'emails_failed_30d' => 0,
         ]);
         $response->assertJsonPath('data.upcoming_window_days', 14);
         $response->assertJsonPath('data.upcoming_deadlines.*.matter_number', ['T-1', 'T-2']);
@@ -138,6 +141,9 @@ class DashboardSummaryTest extends TestCase
                 // Phase 5 counters (no signing requests in these fixtures).
                 'signatures_pending' => 0,
                 'signatures_signed' => 0,
+                'emails_sending' => 0,
+                'emails_accepted_30d' => 0,
+                'emails_failed_30d' => 0,
             ]);
     }
 }
