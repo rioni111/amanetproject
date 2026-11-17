@@ -37,8 +37,14 @@ class DocumentStorage
      */
     public function stage(UploadedFile $file, string $expectedSha256): string
     {
+        return $this->stageLocalFile($file->getRealPath(), (int) $file->getSize(), $expectedSha256);
+    }
+
+    /** Same as stage() for a file produced on the server (e.g. a generated signed PDF in a temp directory). */
+    public function stageLocalFile(string $localPath, int $expectedSize, string $expectedSha256): string
+    {
         $path = self::STAGING_DIR.'/'.Str::uuid()->toString().'.part';
-        $stream = fopen($file->getRealPath(), 'rb');
+        $stream = fopen($localPath, 'rb');
         try {
             $this->disk()->writeStream($path, $stream);
         } finally {
@@ -47,7 +53,7 @@ class DocumentStorage
             }
         }
 
-        if ($this->disk()->size($path) !== $file->getSize() || $this->sha256($path) !== $expectedSha256) {
+        if ($this->disk()->size($path) !== $expectedSize || $this->sha256($path) !== $expectedSha256) {
             $this->discard($path);
             throw new RuntimeException('The uploaded file could not be stored intact.');
         }
@@ -65,6 +71,12 @@ class DocumentStorage
         $this->disk()->move($stagingPath, $final);
 
         return $final;
+    }
+
+    /** Absolute local path of a stored file (the documents disk is a local, non-public disk). */
+    public function absolutePath(string $path): string
+    {
+        return $this->disk()->path($path);
     }
 
     public function discard(?string $path): void

@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Middleware\EnsureUserIsAdmin;
+use App\Services\Signing\SigningFailedException;
+use App\Services\Signing\UnsupportedPdfException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -54,6 +56,17 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
+        // Phase 5 signing engine: the PDF cannot be signed safely, or the signed PDF could not be generated /
+        // verified. Nothing was stored in either case; the message explains what to do.
+        $exceptions->render(function (UnsupportedPdfException|SigningFailedException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'message' => $e->getMessage(),
+                    'code' => $e instanceof UnsupportedPdfException ? 'pdf_unsupported' : 'signing_failed',
+                ], 422);
+            }
+        });
+
         // Credentials and tokens must never be written to logs or flashed back.
-        $exceptions->dontFlash(['current_password', 'password', 'password_confirmation', 'token']);
+        $exceptions->dontFlash(['current_password', 'password', 'password_confirmation', 'token', 'strokes', 'typed_name']);
     })->create();

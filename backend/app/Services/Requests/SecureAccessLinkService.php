@@ -7,6 +7,7 @@ use App\Enums\SecureLinkPurpose;
 use App\Models\DocumentRequest;
 use App\Models\Matter;
 use App\Models\SecureAccessLink;
+use App\Models\SigningRequest;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
@@ -62,24 +63,64 @@ class SecureAccessLinkService
     public function issueUploadLink(DocumentRequest $request, User $actor, ?int $expiresInDays = null): IssuedLink
     {
         $replaced = $this->revokeUsableForRequest($request, LinkRevocationReason::Replaced, $actor);
+        [$link, $token] = $this->createLink(SecureLinkPurpose::DocumentUpload, $request->matter_id,
+            ['document_request_id' => $request->id], $actor, $this->expiryDays($expiresInDays));
 
+        return new IssuedLink($link, $this->uploadUrl($token), $replaced);
+    }
+
+    /**
+     * Phase 5: a signing link for a (locked) signing request — same token generation, hashing, expiry and
+     * revocation as upload links, but its own purpose, target and endpoints. One successful signature
+     * consumes it; viewing and starting do not.
+     */
+    public function issueSigningLink(SigningRequest $request, User $actor, ?int $expiresInDays = null): IssuedLink
+    {
+        $replaced = $this->revokeUsableForSigningRequest($request, LinkRevocationReason::Replaced, $actor);
+        $days = $this->expiryDays($expiresInDays ?? (int) config('lexora.signing.link_expiry_days', 7));
+        [$link, $token] = $this->createLink(SecureLinkPurpose::DocumentSigning, $request->matter_id,
+            ['signing_request_id' => $request->id], $actor, $days);
+
+        return new IssuedLink($link, config('lexora.public_app_url').'/client-sign#'.$token, $replaced);
+    }
+
+    /** @return int number of links revoked */
+    public function revokeUsableForSigningRequest(SigningRequest $request, LinkRevocationReason $reason, ?User $actor): int
+    {
+        return SecureAccessLink::query()
+            ->where('signing_request_id', $request->id)
+            ->whereNull('revoked_at')
+            ->whereNull('consumed_at')
+            ->update([
+                'revoked_at' => Carbon::now(),
+                'revocation_reason' => $reason->value,
+                'revoked_by' => $actor?->id,
+                'updated_at' => Carbon::now(),
+            ]);
+    }
+
+    /**
+     * @param  array<string, int>  $target
+     * @return array{0: SecureAccessLink, 1: string} the link and its raw token (never stored)
+     */
+    private function createLink(SecureLinkPurpose $purpose, int $matterId, array $target, User $actor, int $days): array
+    {
         // A collision of two 256-bit random values is not a realistic event; the unique index guards it anyway.
         $token = self::generateToken();
-        $now = Carbon::now();
         $link = new SecureAccessLink;
         $link->forceFill([
             'uuid' => Str::uuid()->toString(),
-            'purpose' => SecureLinkPurpose::DocumentUpload,
-            'matter_id' => $request->matter_id,
-            'document_request_id' => $request->id,
+            'purpose' => $purpose,
+            'matter_id' => $matterId,
+            ...$target,
             'token_hash' => self::hashToken($token),
-            'expires_at' => $now->copy()->addDays($this->expiryDays($expiresInDays)),
+            'expires_at' => Carbon::now()->addDays($days),
             'max_uses' => 1,
             'successful_uses' => 0,
             'created_by' => $actor->id,
         ])->save();
 
-        return new IssuedLink($link, $this->uploadUrl($token), $replaced);
+        return [$link, $token];
     }
 
     public function revoke(SecureAccessLink $link, LinkRevocationReason $reason, ?User $actor): bool

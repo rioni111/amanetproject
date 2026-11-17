@@ -4,10 +4,12 @@ namespace App\Services;
 
 use App\Enums\DocumentRequestStatus;
 use App\Enums\MatterStatus;
+use App\Enums\SigningStatus;
 use App\Enums\TaskStatus;
 use App\Models\Client;
 use App\Models\DocumentRequest;
 use App\Models\Matter;
+use App\Models\SigningRequest;
 use App\Models\Task;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
@@ -65,6 +67,15 @@ class DashboardService
             ->toBase()
             ->first();
 
+        // Signing requests (Phase 5) on non-archived matters: open (awaiting a signature) and completed.
+        $signingCounts = SigningRequest::query()
+            ->join('matters', 'matters.id', '=', 'signing_requests.matter_id')
+            ->where('matters.status', '<>', MatterStatus::Archived->value)
+            ->selectRaw('count(*) filter (where signing_requests.status in (?, ?, ?, ?)) as active', SigningStatus::activeValues())
+            ->selectRaw('count(*) filter (where signing_requests.status = ?) as signed', [SigningStatus::Signed->value])
+            ->toBase()
+            ->first();
+
         return [
             'stats' => [
                 'total_clients' => Client::query()->count(),
@@ -80,6 +91,8 @@ class DashboardService
                 'requests_correction' => (int) $requestCounts->corrections,
                 'requests_overdue' => (int) $requestCounts->overdue,
                 'requests_approved' => (int) $requestCounts->approved,
+                'signatures_pending' => (int) $signingCounts->active,
+                'signatures_signed' => (int) $signingCounts->signed,
             ],
             'status_breakdown' => array_map(fn (MatterStatus $status) => [
                 'status' => $status->value,

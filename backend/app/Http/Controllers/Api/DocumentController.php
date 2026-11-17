@@ -76,7 +76,7 @@ class DocumentController extends Controller
     public static function loadDetail(Document $document): Document
     {
         return Document::query()
-            ->with(['currentVersion', 'uploader:id,name', 'matter:id,matter_number,title,status,client_id', 'matter.client:id,name'])
+            ->with(['currentVersion', 'uploader:id,name', 'matter:id,matter_number,title,status,client_id', 'matter.client:id,name', 'activeSigningRequest'])
             ->findOrFail($document->getKey());
     }
 

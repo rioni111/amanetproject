@@ -56,6 +56,14 @@ class MatterResource extends JsonResource
                 'approved' => (int) $this->requests_approved_count,
                 'overdue' => (int) $this->requests_overdue_count,
             ]),
+            'signatures' => $this->when($this->hasAttribute('signatures_total_count'), fn () => [
+                'total' => (int) $this->signatures_total_count,
+                'active' => (int) $this->signatures_active_count,
+                'sent' => (int) $this->signatures_sent_count,
+                'viewed' => (int) $this->signatures_viewed_count,
+                'started' => (int) $this->signatures_started_count,
+                'signed' => (int) $this->signatures_signed_count,
+            ]),
         ];
     }
 }
