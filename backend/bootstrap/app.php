@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureUserIsAdmin;
+use App\Http\Middleware\SecurityHeaders;
 use App\Services\Signing\SigningFailedException;
 use App\Services\Signing\UnsupportedPdfException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -22,6 +23,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // Sanctum SPA authentication: requests from SANCTUM_STATEFUL_DOMAINS get
         // cookies, sessions and CSRF verification on /api routes.
         $middleware->statefulApi();
+
+        // Phase 7: security headers on every response (JSON, PDF, errors and unknown routes alike).
+        $middleware->append(SecurityHeaders::class);
 
         $middleware->alias([
             'admin' => EnsureUserIsAdmin::class,
