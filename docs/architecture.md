@@ -192,9 +192,9 @@ Browser ◄── fetch (session cookie) ── GET …/versions/{v}/preview|dow
 - **Audit**: uploads, versions, metadata changes, archive/restore and downloads are recorded in the same transaction pattern
   as Phase 2 (downloads are appended after authorisation); inline previews are not, to keep the timeline meaningful.
 
-Prepared for later phases: `origin` (`admin`/`client`) and `kind` (`upload`/`signed`) on versions; signing requests will
-reference an immutable `document_versions.id`; client submissions (Phase 4) arrive as new documents/versions with
-`origin = client` through the same service and storage.
+`origin` (`admin`/`client`) and `kind` (`upload`/`signed`) on versions: client submissions (Phase 4) arrive as new
+documents/versions with `origin = client`, and signed PDFs (Phase 5) are appended as `kind = signed` versions through the same
+service and storage; signing requests reference an immutable `document_versions.id`.
 ## 7. Client document requests and secure links (Phase 4 — implemented)
 
 ```
@@ -230,20 +230,47 @@ Admin reviews ──► start-review ─► approve (records the exact version; 
   `request_unavailable`). Repeated failed lookups lock an IP out for 15 minutes.
 - **Rate limits** (config `lexora.public_links`): page/API views 60/min per IP, submissions 10/min per IP and 5/min per token,
   20 failed lookups per IP → lockout. The Playwright environment raises the per-IP values (everything runs from 127.0.0.1).
-- **Purpose separation for Phase 5**: `secure_access_links.purpose` already allows `document_signing`; the upload endpoints only
-  accept `document_upload`, so a signing token is "unknown" to them and vice versa.
+- **Purpose separation**: `secure_access_links.purpose` is `document_upload` or `document_signing` (Phase 5); each public API only
+  accepts its own purpose, so a signing token is "unknown" to the upload endpoints and vice versa.
 - **Email boundary**: Phase 4 never claims a link was emailed. Links are copied by the administrator; Phase 6 will send them through
   queued mail using the same one-time URL returned by `IssuedLink`.
 
-## 8. Future signing workflow (Phase 5–6 — design)
+## 8. Electronic PDF signing (Phase 5 — implemented)
 
-- **One signer per PDF** (assignment constraint): a `signing_request` references exactly one `document_version` and one signer
-  (name + email snapshot, optionally a client id).
-- Status machine: `sent → viewed → started → signed` (plus `revoked`, `expired`), each transition appended to `signature_events`
-  with timestamp, IP and user agent. Events are append-only, like `activity_events`.
-- Admin signing and client signing share the same pipeline; the client path is authorised by a `document_signing` secure link
-  (same table, hashing, expiry and revocation as Phase 4 upload links; its own endpoints and rules).
-- Signature placement and drawing happen in the browser; the server stamps the signature image and an audit footer onto the PDF
-  (PHP library, no external signing platform), computes a SHA-256 of the result and stores it as a **new immutable document version**
-  linked from the signing request (`signed_document_version_id`).
-- Phase 6 adds email invitations/follow-ups (queued mail, Mailpit in development) and admin notifications for each status change.
+```
+Admin "Sign PDF" (document page) ─► GET  …/documents/{d}/versions/{v}/signing-eligibility   (page sizes + consent text, or why not)
+                                 ─► POST …/documents/{d}/sign          SigningService::signNowAsAdmin (create + sign, one transaction)
+Admin Signatures tab ─► POST …/signing-requests [issue_link] ─► link shown ONCE ─► copy ─► POST …/mark-shared  (Ready → Sent)
+Client /client-sign#<token> (no account, credentials: omit, header X-Signing-Token)
+   GET /api/public/signing ─► GET …/document (pinned source, SHA-checked) ─► POST …/view (rendered → Viewed)
+   ─► POST …/start ("Start signing" → Started) ─► POST …/complete (signature + placement + confirmed name + consent)
+
+SigningService::complete()  (admin and client share it)
+  1 validate: SignatureAppearance (drawn strokes | typed name), SignaturePlacement (page, x, y, width → points), consent version,
+    confirmed name = designated signer (case/space/accent-insensitive); admin name always from the session
+  2 source file exists and matches its SHA-256; PdfSigningService::inspect → displayed page sizes
+  3 PdfSigningService::sign (FPDI imports every page, FPDF draws vector strokes or Times-Italic text + caption) → temp file
+    → verifyOutput (re-parse from memory: page count, sizes, caption)
+  4 DocumentService::persistLocalFile (private staging → SHA-256 → final path) + ONE transaction:
+    lock matter → document → request (→ link); re-check archive, source still current, status, link usable;
+    appendVersion(kind = signed) ; signature_records insert ; request → signed ; link consumed (conditional) ;
+    activity signing.completed + document.signed
+  5 failure anywhere → rollback, delete only this attempt's file, temp removed → error, never success
+```
+
+- **One signer per PDF**: one `signer_type` with exactly one of `signer_user_id`/`client_id` (CHECKs); one active request per
+  document (partial unique index); signed versions are never signing sources (insert trigger); one signature record per request.
+- **Progress** lives on `signing_requests` (`status` + `sent_at/viewed_at/started_at/signed_at`, server time, forward-only, CHECK
+  ordered). "Sent" is reached only by the administrator confirming they shared the link (`delivery_channel = manual`); delivery is
+  kept separate from progress so Phase 6 can add e-mail outcomes without changing the signing state machine.
+- **Lifecycle** (`SigningLifecycle`): archiving a matter or document, or adding a newer version, cancels unfinished requests with a
+  reason and revokes their links in the same transaction; restoring revives nothing.
+- **Coordinates**: the browser sends fractions of the *displayed* page (PDF.js applies `/Rotate`); FPDI imports pages with the same
+  rotation, so the stored rectangle (`placement.rect_pt`) is exactly where the signature appears.
+- **Public boundary**: identical to Phase 4 (no session/CSRF middleware, Origin allow-list, `no-store`/`no-referrer`/`noindex`,
+  token only in the fragment and a header, IP lockout after failed lookups) with its own rate limiters
+  (`public-signing`, `public-signing-complete`) and its own resolver/middleware (`PublicSigningLinkResolver`,
+  `AuthorizePublicSigningLink`).
+- **Evidence**: `signature_records` (immutable) holds the signer snapshot, confirmed name, method, page and placement, source and
+  signed version ids + SHA-256, the versioned consent text, server time, IP and user agent. It is not a certificate-based signature.
+- Phase 6 adds e-mail invitations, reminders and expiry notices (queued mail, Mailpit in development) and admin notifications.

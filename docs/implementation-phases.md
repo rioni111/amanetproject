@@ -7,8 +7,8 @@ Seven-day delivery plan. ✅ = implemented and verified · 🟡 = foundation onl
 | 1 | Foundation, Architecture, Database, Authentication & UI | ✅ Complete |
 | 2 | Matter, Client, Task & Notes Management | ✅ Complete ([report](PHASE_2_IMPLEMENTATION_REPORT.md)) |
 | 3 | Document Management & Version Control | ✅ Complete ([report](PHASE_3_IMPLEMENTATION_REPORT.md)) |
-| 4 | Secure Client Document Requests & Review | ⬜ Planned |
-| 5 | Electronic Document Signing | ⬜ Planned |
+| 4 | Secure Client Document Requests & Review | ✅ Complete ([report](PHASE_4_IMPLEMENTATION_REPORT.md)) |
+| 5 | Electronic Document Signing | ✅ Complete on branch `feature/phase-5-pdf-signing` ([report](PHASE_5_IMPLEMENTATION_REPORT.md)) |
 | 6 | Email, Notifications, Signing Progress & Activity | ⬜ Planned |
 | 7 | Testing, Security Hardening, UI Polish & Delivery | ⬜ Planned |
 
@@ -58,15 +58,28 @@ Seven-day delivery plan. ✅ = implemented and verified · 🟡 = foundation onl
 - ✅ Dashboard and matter counters (pending, awaiting review, corrections, overdue, approved); 13 new activity event types
 - ✅ 33 PHPUnit tests (incl. multi-process races) + 7 Playwright tests (desktop scenarios A–G, I, J and Pixel 7 scenario H)
 - ⬜ Email delivery of links is Phase 6 (links are copied by the administrator)
-## 5. Electronic Document Signing — ⬜
 
-- `signing_requests`, `signature_events`; one signer per PDF
-- Admin signing and client signing via secure link; server-side PDF stamping; immutable signed version + audit trail
+## 5. Electronic Document Signing — ✅
+
+- ✅ `signing_requests` (one designated signer, pinned immutable source version, status + server timestamps, delivery kept
+  separate from progress) and immutable `signature_records`; `secure_access_links.signing_request_id` (purpose `document_signing`)
+- ✅ Database guards: composite FKs, exactly one signer, status/timestamp consistency and order, one active request per document,
+  only original (`upload`) versions signable, signer/source never reassigned, finished requests final, evidence immutable
+- ✅ In-house PDF engine (FPDI 2.6.10 + FPDF 1.8.2, MIT): vector drawn or Times-Italic typed signature + "Electronically signed by"
+  caption on the chosen page, all pages preserved, output re-parsed and verified; unsupported PDFs refused cleanly
+- ✅ Signed PDF = new immutable version (`kind = signed`, SHA-256) on the private disk; originals never change; failure cleanup
+- ✅ Admin signing ("Sign PDF" / "Sign now") and passwordless client signing (`/client-sign#token`): review, draw or type, place,
+  confirm name, explicit consent; Ready → Sent (admin-confirmed sharing) → Viewed → Started → Signed, Cancelled on archive/new version
+- ✅ Secure links: hashed 256-bit tokens, expiry, rotation, revocation, purpose isolation, consumed only by a completed signature
+- ✅ `/signatures`, matter Signatures tab, request page (progress, link card, evidence), dashboard counters, 10 activity event types
+- ✅ 28 PHPUnit tests (incl. multi-process races, failure injection, every PDF compatibility refusal) + 7 Playwright tests
+  (desktop scenarios A–I, K, keyboard-only L and Pixel 7 J); final Windows verification 201 PHPUnit / 53 Playwright, all passed
+- ⬜ Not a qualified/certificate-based signature; no independent identity verification; e-mail invitations are Phase 6
 
 ## 6. Email, Notifications, Signing Progress & Activity — ⬜
 
-- Queued emails (invitations, upload requests, follow-ups) via Mailpit in development
-- Sent → Viewed → Started → Signed tracking; admin notifications; full matter activity timeline
+- Queued emails (signing invitations, upload requests, follow-ups, reminders, expiry notices) via Mailpit in development
+- E-mail delivery outcomes alongside the Phase 5 progress tracking (`delivery_channel = email`); admin notifications
 
 ## 7. Testing, Security Hardening, UI Polish & Delivery — ⬜
 
