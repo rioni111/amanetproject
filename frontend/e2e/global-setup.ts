@@ -31,7 +31,7 @@ export default async function globalSetup() {
  * pass; the API still rejects it, so nothing is accessed). Failures are ignored.
  */
 async function warmUp() {
-  const routes = ["/login", "/dashboard", "/matters", "/clients", "/documents", "/matters/1", "/clients/1", "/matters/1/documents/1", "/document-requests", "/matters/1/requests/1", "/client-upload"];
+  const routes = ["/login", "/dashboard", "/matters", "/clients", "/documents", "/matters/1", "/clients/1", "/matters/1/documents/1", "/document-requests", "/matters/1/requests/1", "/client-upload", "/signatures", "/matters/1/signatures/1", "/client-sign"];
   for (const route of routes) {
     try {
       await fetch(`${FRONTEND_URL}${route}`, { headers: { cookie: `${SESSION_COOKIE}=warm-up` }, signal: AbortSignal.timeout(120_000) });

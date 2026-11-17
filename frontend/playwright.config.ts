@@ -59,6 +59,8 @@ export default defineConfig({
         PUBLIC_LINK_VIEWS_PER_MINUTE: "600",
         PUBLIC_LINK_UPLOADS_PER_MINUTE: "200",
         PUBLIC_LINK_INVALID_ATTEMPTS: "200",
+        PUBLIC_SIGNING_VIEWS_PER_MINUTE: "1000",
+        PUBLIC_SIGNING_COMPLETIONS_PER_MINUTE: "200",
       },
     },
     {
