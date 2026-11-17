@@ -49,7 +49,7 @@ class CommunicationSecurityTest extends TestCase
             $this->assertStringNotContainsString($docToken, $dump, $table);
             $this->assertStringNotContainsString('client-upload#', $dump, $table);
             $this->assertStringNotContainsString('client-sign#', $dump, $table);
-            if ($table !== 'secure_access_links') {
+            if ($table !== 'secure_access_links') { // (and Phase 7's email_link_reservations, which only ever holds hashes)
                 $this->assertStringNotContainsString($hash, $dump, "{$table} never needs the token hash");
             }
         }

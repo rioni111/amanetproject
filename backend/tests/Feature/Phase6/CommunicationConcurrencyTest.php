@@ -194,13 +194,14 @@ class CommunicationConcurrencyTest extends TestCase
         $matters = $this->matters;
         $triggers = ['activity_events activity_events_no_update_delete', 'document_versions document_versions_no_update_delete',
             'signature_records signature_records_no_update_delete', 'signing_requests signing_requests_update_guard',
-            'email_deliveries email_deliveries_guard'];
+            'email_deliveries email_deliveries_guard', 'email_link_reservations email_link_reservations_guard'];
         $this->db->transaction(function () use ($matters, $triggers) {
             foreach ($triggers as $t) {
                 [$table, $trigger] = explode(' ', $t);
                 $this->db->statement("ALTER TABLE {$table} DISABLE TRIGGER {$trigger}");
             }
             $documents = $this->db->table('documents')->whereIn('matter_id', $matters)->pluck('id');
+            $this->db->table('email_link_reservations')->whereIn('matter_id', $matters)->delete(); // Phase 7
             $this->db->table('email_deliveries')->whereIn('matter_id', $matters)->delete();
             $this->db->table('notifications')->where('notifiable_type', 'user')->where('notifiable_id', $this->user)->delete();
             $this->db->table('activity_events')->whereIn('matter_id', $matters)->delete();

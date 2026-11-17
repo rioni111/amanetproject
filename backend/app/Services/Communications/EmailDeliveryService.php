@@ -5,9 +5,12 @@ namespace App\Services\Communications;
 use App\Enums\ActivityEventType;
 use App\Enums\EmailDeliveryStatus;
 use App\Enums\EmailFailureCategory;
+use App\Enums\EmailLinkReservationStatus;
 use App\Enums\NotificationKind;
+use App\Enums\SecureLinkPurpose;
 use App\Mail\ClientActionMail;
 use App\Models\EmailDelivery;
+use App\Models\EmailLinkReservation;
 use App\Models\Matter;
 use App\Models\User;
 use App\Services\ActivityLogger;
@@ -25,15 +28,17 @@ use Throwable;
  * Delivery mechanics shared by every e-mail (Phase 6). Architecture: SYNCHRONOUS SEND AFTER COMMIT.
  *
  *   1. claim   — short transaction, request row locked: eligibility, recipient, cooldown, "one sending per
- *                request" and idempotency are checked, and an email_deliveries row is inserted as 'sending'.
- *   2. send    — no transaction open: the action token is generated in memory, the MIME message is built and
- *                submitted to the configured SMTP server (bounded timeout, MAIL_TIMEOUT).
+ *                request" and idempotency are checked, an email_deliveries row is inserted as 'sending', and
+ *                (Phase 7) the SHA-256 hash of the token generated in memory is reserved (email_link_reservations).
+ *   2. send    — no transaction open: the MIME message carrying the token is built and submitted to the
+ *                configured SMTP server (bounded timeout, MAIL_TIMEOUT).
  *   3. finish  — second transaction: on acceptance the link (hash only) is registered and the request updated
  *                (DocumentRequestEmailService / SigningEmailService); on failure only the delivery row changes.
  *
- * No queue is involved, so no token ever lands in a job payload; nothing secret is persisted. A process that
- * dies between 2 and 3 leaves a 'sending' row, which recoverStale() later marks failed / "interrupted"
- * (outcome unknown — the SMTP server may or may not have accepted the message; see the Phase 6 report §16).
+ * No queue is involved, so no token ever lands in a job payload; the token itself is never persisted. A process
+ * that dies between 2 and 3 leaves a 'sending' row, which recoverStale() later marks failed / "interrupted"
+ * (outcome unknown). Phase 7: if that message did arrive, the client's link still works — the pending
+ * reservation is activated when the token is first presented (EmailLinkActivationService).
  */
 class EmailDeliveryService
 {
@@ -131,6 +136,61 @@ class EmailDeliveryService
         return $delivery;
     }
 
+    /**
+     * Phase 7: reserves the hash of the token the message will carry, in the claim transaction — BEFORE the
+     * SMTP submission. Not a link: see EmailLinkActivationService for the only way it can become one.
+     */
+    public function reserve(EmailDelivery $delivery, SecureLinkPurpose $purpose, #[\SensitiveParameter] string $token, \DateTimeInterface $expiresAt): EmailLinkReservation
+    {
+        $reservation = new EmailLinkReservation;
+        $reservation->forceFill([
+            'email_delivery_id' => $delivery->id,
+            'purpose' => $purpose,
+            'matter_id' => $delivery->matter_id,
+            'document_request_id' => $delivery->document_request_id,
+            'signing_request_id' => $delivery->signing_request_id,
+            'token_hash' => SecureAccessLinkService::hashToken($token),
+            'expires_at' => Carbon::instance($expiresAt),
+            'status' => EmailLinkReservationStatus::Pending,
+        ])->save();
+
+        return $reservation;
+    }
+
+    /**
+     * Inside the finish transaction (request locked): when the recipient already activated the link (the send
+     * was slow and they clicked first), the outcome is recorded — returns the delivery as it stands. Null: go on.
+     */
+    public function finishedOnFirstUse(EmailDelivery $delivery): ?EmailDelivery
+    {
+        $reservation = EmailLinkReservation::query()->where('email_delivery_id', $delivery->id)->lockForUpdate()->first();
+
+        return $reservation !== null && $reservation->status === EmailLinkReservationStatus::Activated
+            ? EmailDelivery::query()->findOrFail($delivery->id)
+            : null;
+    }
+
+    /**
+     * Runs the finish transaction of an ACCEPTED message. A database failure there must not surface as a raw
+     * error (its SQL and bindings would reach the log): it is reported as a class name only, and the
+     * administrator is told the truth (EmailUnrecordedException). The reserved hash keeps the client's link working.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $finish
+     * @return T
+     */
+    public function finishAccepted(EmailDelivery $delivery, callable $finish): mixed
+    {
+        try {
+            return DB::transaction($finish);
+        } catch (Throwable $e) {
+            report(new \RuntimeException("Recording accepted e-mail delivery {$delivery->id} failed (".$e::class.').'));
+
+            throw new EmailUnrecordedException;
+        }
+    }
+
     /** Records a slot that was intentionally not sent (inside the caller's transaction). */
     public function recordSkipped(array $attributes, EmailFailureCategory $reason): EmailDelivery
     {
@@ -212,6 +272,14 @@ class EmailDeliveryService
                 'failed_at' => Carbon::now(),
                 'failure_category' => $category,
             ])->save();
+            // The server definitely refused the message: its token never left this process. For an uncertain
+            // outcome (timeout, dropped connection, interruption) the reservation stays pending, so the link
+            // still works if the message did arrive (EmailLinkActivationService).
+            if ($category->definitelyNotDelivered()) {
+                EmailLinkReservation::query()->where('email_delivery_id', $locked->id)
+                    ->where('status', EmailLinkReservationStatus::Pending->value)
+                    ->update(['status' => EmailLinkReservationStatus::Discarded->value, 'resolved_at' => Carbon::now(), 'updated_at' => Carbon::now()]);
+            }
 
             if ($matter !== null) {
                 $this->activity->record($matter, ActivityEventType::EmailFailed,
@@ -239,6 +307,11 @@ class EmailDeliveryService
             'provider_message_id' => $messageId !== null ? Str::limit($messageId, 250, '') : null,
             'secure_access_link_id' => $linkId,
         ])->save();
+        if ($linkId !== null) {
+            EmailLinkReservation::query()->where('email_delivery_id', $locked->id)
+                ->where('status', EmailLinkReservationStatus::Pending->value)
+                ->update(['status' => EmailLinkReservationStatus::Registered->value, 'secure_access_link_id' => $linkId, 'resolved_at' => Carbon::now(), 'updated_at' => Carbon::now()]);
+        }
         $this->activity->record($matter, ActivityEventType::EmailAccepted, $description, $actor, $locked, [...$this->metadata($locked), ...$extra]);
 
         return $locked;

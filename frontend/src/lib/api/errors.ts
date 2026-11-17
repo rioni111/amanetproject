@@ -70,8 +70,8 @@ export async function toApiError(response: Response): Promise<ApiError> {
 
   // Never surface raw server exception messages for 5xx responses — except the e-mail outcomes, whose
   // messages are written for administrators and contain no internals (Phase 6: 502 email_failed,
-  // 503 email_unavailable).
-  const safeServerMessage = body.code === "email_failed" || body.code === "email_unavailable";
+  // 503 email_unavailable; Phase 7: 500 email_unrecorded).
+  const safeServerMessage = body.code === "email_failed" || body.code === "email_unavailable" || body.code === "email_unrecorded";
   const message = (response.status >= 500 && !safeServerMessage) || !body.message ? fallbackMessage(response.status) : body.message;
 
   return new ApiError(

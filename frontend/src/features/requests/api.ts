@@ -87,7 +87,7 @@ export interface RequestInput {
 
 /** Phase 6: outcome of "send the correction by e-mail" (the correction itself is always recorded). */
 export interface CorrectionEmailOutcome {
-  status: "accepted" | "failed" | "not_sent";
+  status: "accepted" | "failed" | "not_sent" | "unrecorded";
   message: string;
   delivery: unknown;
 }

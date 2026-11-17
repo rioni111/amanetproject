@@ -8,6 +8,7 @@ use App\Enums\SigningStatus;
 use App\Models\Matter;
 use App\Models\SecureAccessLink;
 use App\Models\SigningRequest;
+use App\Services\Communications\EmailLinkActivationService;
 use App\Services\Requests\PublicLinkException;
 use App\Services\Requests\SecureAccessLinkService;
 use Illuminate\Http\Request;
@@ -24,6 +25,8 @@ class PublicSigningLinkResolver
 
     private const LOCKOUT_SECONDS = 900;
 
+    public function __construct(private readonly EmailLinkActivationService $activation) {}
+
     public function resolve(Request $request): SecureAccessLink
     {
         $limiterKey = 'public-signing-invalid:'.$request->ip();
@@ -32,13 +35,17 @@ class PublicSigningLinkResolver
         }
 
         $token = (string) $request->header(self::HEADER, '');
-        $link = SecureAccessLinkService::isWellFormed($token)
-            ? SecureAccessLink::query()
-                ->where('token_hash', SecureAccessLinkService::hashToken($token))
-                ->where('purpose', SecureLinkPurpose::DocumentSigning->value)
-                ->with(['signingRequest.matter', 'signingRequest.document', 'signingRequest.sourceVersion'])
-                ->first()
-            : null;
+        $find = fn () => SecureAccessLink::query()
+            ->where('token_hash', SecureAccessLinkService::hashToken($token))
+            ->where('purpose', SecureLinkPurpose::DocumentSigning->value)
+            ->with(['signingRequest.matter', 'signingRequest.document', 'signingRequest.sourceVersion'])
+            ->first();
+        $link = SecureAccessLinkService::isWellFormed($token) ? $find() : null;
+        // Phase 7: the token of an e-mail whose sending was never confirmed is activated on first use.
+        if ($link === null && SecureAccessLinkService::isWellFormed($token)
+            && $this->activation->activate($token, SecureLinkPurpose::DocumentSigning) !== null) {
+            $link = $find();
+        }
 
         if ($link === null || $link->signingRequest === null || ! hash_equals($link->token_hash, SecureAccessLinkService::hashToken($token))) {
             RateLimiter::hit($limiterKey, self::LOCKOUT_SECONDS);

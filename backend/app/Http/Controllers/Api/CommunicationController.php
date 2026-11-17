@@ -67,7 +67,7 @@ class CommunicationController extends Controller
         Gate::authorize('view', $documentRequest);
 
         return EmailDeliveryResource::collection(EmailDelivery::query()->where('document_request_id', $documentRequest->id)
-            ->with(['link', 'creator:id,name'])->orderByDesc('id')->limit(100)->get());
+            ->with(['link', 'creator:id,name', 'reservation.link'])->orderByDesc('id')->limit(100)->get());
     }
 
     public function signingHistory(Matter $matter, SigningRequest $signingRequest): AnonymousResourceCollection
@@ -75,7 +75,7 @@ class CommunicationController extends Controller
         Gate::authorize('view', $matter);
 
         return EmailDeliveryResource::collection(EmailDelivery::query()->where('signing_request_id', $signingRequest->id)
-            ->with(['link', 'creator:id,name'])->orderByDesc('id')->limit(100)->get());
+            ->with(['link', 'creator:id,name', 'reservation.link'])->orderByDesc('id')->limit(100)->get());
     }
 
     public function matterHistory(Request $request, Matter $matter): AnonymousResourceCollection
@@ -84,7 +84,7 @@ class CommunicationController extends Controller
         $perPage = min(100, max(1, (int) $request->query('per_page', 25)));
 
         return EmailDeliveryResource::collection(EmailDelivery::query()->where('matter_id', $matter->id)
-            ->with(['link', 'creator:id,name'])->orderByDesc('id')->paginate($perPage));
+            ->with(['link', 'creator:id,name', 'reservation.link'])->orderByDesc('id')->paginate($perPage));
     }
 
     /**
@@ -124,7 +124,7 @@ class CommunicationController extends Controller
 
     private function outcome(EmailDelivery $delivery, bool $mayBeReplay): JsonResponse
     {
-        $delivery->loadMissing(['link', 'creator:id,name']);
+        $delivery->loadMissing(['link', 'creator:id,name', 'reservation.link']);
         $fresh = $delivery->wasRecentlyCreated || $delivery->wasChanged('status') || $delivery->status === EmailDeliveryStatus::Failed;
         $resource = new EmailDeliveryResource($delivery);
 
