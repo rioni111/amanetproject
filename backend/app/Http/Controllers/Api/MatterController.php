@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\DocumentRequestStatus;
 use App\Enums\MatterStatus;
 use App\Enums\TaskStatus;
 use App\Http\Controllers\Controller;
@@ -105,6 +106,13 @@ class MatterController extends Controller
                 'tasks as open_tasks_count' => fn (Builder $q) => $q->whereIn('status', TaskStatus::openValues()),
                 'tasks as completed_tasks_count' => fn (Builder $q) => $q->where('status', TaskStatus::Completed->value),
                 'tasks as overdue_tasks_count' => fn (Builder $q) => $q->whereIn('status', TaskStatus::openValues())->where('due_at', '<', $now),
+                // Phase 4: outstanding client document requirements of this matter.
+                'documentRequests as requests_open_count' => fn (Builder $q) => $q->whereIn('status', DocumentRequestStatus::openValues()),
+                'documentRequests as requests_pending_count' => fn (Builder $q) => $q->where('status', DocumentRequestStatus::Pending->value),
+                'documentRequests as requests_awaiting_review_count' => fn (Builder $q) => $q->whereIn('status', DocumentRequestStatus::awaitingReviewValues()),
+                'documentRequests as requests_correction_count' => fn (Builder $q) => $q->where('status', DocumentRequestStatus::CorrectionRequested->value),
+                'documentRequests as requests_approved_count' => fn (Builder $q) => $q->where('status', DocumentRequestStatus::Approved->value),
+                'documentRequests as requests_overdue_count' => fn (Builder $q) => $q->overdue($now),
             ])
             ->findOrFail($matter->getKey());
     }

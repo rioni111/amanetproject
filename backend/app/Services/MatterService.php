@@ -3,11 +3,14 @@
 namespace App\Services;
 
 use App\Enums\ActivityEventType;
+use App\Enums\DocumentRequestStatus;
+use App\Enums\LinkRevocationReason;
 use App\Enums\MatterStatus;
 use App\Enums\Priority;
 use App\Models\Client;
 use App\Models\Matter;
 use App\Models\User;
+use App\Services\Requests\SecureAccessLinkService;
 use App\Support\LegalDate;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -28,10 +31,15 @@ class MatterService
     /** Fields whose before/after values are safe to keep in history metadata. */
     private const TRACKED_FIELDS = ['title', 'matter_type', 'opened_date', 'due_date'];
 
+    private readonly SecureAccessLinkService $links;
+
     public function __construct(
         private readonly ActivityLogger $activity,
         private readonly MatterNumberGenerator $numbers,
-    ) {}
+        ?SecureAccessLinkService $links = null,
+    ) {
+        $this->links = $links ?? app(SecureAccessLinkService::class);
+    }
 
     /** @param array<string, mixed> $data validated input */
     public function create(array $data, User $actor): Matter
@@ -92,6 +100,12 @@ class MatterService
             }
             $newClient = null;
             if (array_key_exists('client_id', $data) && (int) $data['client_id'] !== $matter->client_id) {
+                // Issued upload links serve the matter's client; they must never start serving another one.
+                if ($matter->documentRequests()->whereIn('status', DocumentRequestStatus::openValues())->exists()) {
+                    throw ValidationException::withMessages(['client_id' => [
+                        'This matter has open client document requests. Complete or cancel them before changing the client.',
+                    ]]);
+                }
                 $newClient = Client::query()->findOrFail($data['client_id']);
                 $matter->client_id = $newClient->id;
             }
@@ -188,6 +202,15 @@ class MatterService
             $this->activity->record($matter, ActivityEventType::MatterArchived,
                 "Matter archived (was {$from->label()}).", $actor, $matter,
                 ['from' => $from->value, 'to' => MatterStatus::Archived->value]);
+
+            // Client links for an archived (read-only) matter stop working immediately. Restoring the
+            // matter does NOT reactivate them: new links must be issued deliberately.
+            $revoked = $this->links->revokeUsableForMatter($matter, LinkRevocationReason::MatterArchived, $actor);
+            if ($revoked > 0) {
+                $this->activity->record($matter, ActivityEventType::LinkRevoked,
+                    ($revoked === 1 ? '1 client upload link was' : "{$revoked} client upload links were").' revoked because the matter was archived.',
+                    $actor, $matter, ['links_revoked' => $revoked, 'reason' => LinkRevocationReason::MatterArchived->value]);
+            }
 
             return $matter;
         });

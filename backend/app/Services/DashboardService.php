@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Enums\DocumentRequestStatus;
 use App\Enums\MatterStatus;
 use App\Enums\TaskStatus;
 use App\Models\Client;
+use App\Models\DocumentRequest;
 use App\Models\Matter;
 use App\Models\Task;
 use Illuminate\Database\Eloquent\Collection;
@@ -49,6 +51,20 @@ class DashboardService
             ->selectRaw('count(*) filter (where status in (?, ?) and due_at < ?) as overdue_tasks', [...TaskStatus::openValues(), $now])
             ->first();
 
+        // Client document requests on non-archived matters, one row per request (no double counting):
+        // each request is in exactly one status; "overdue" is a subset of those waiting for the client.
+        $requestCounts = DocumentRequest::query()
+            ->join('matters', 'matters.id', '=', 'document_requests.matter_id')
+            ->where('matters.status', '<>', MatterStatus::Archived->value)
+            ->selectRaw('count(*) filter (where document_requests.status in (?, ?, ?, ?)) as outstanding', DocumentRequestStatus::openValues())
+            ->selectRaw('count(*) filter (where document_requests.status = ?) as pending', [DocumentRequestStatus::Pending->value])
+            ->selectRaw('count(*) filter (where document_requests.status in (?, ?)) as awaiting_review', DocumentRequestStatus::awaitingReviewValues())
+            ->selectRaw('count(*) filter (where document_requests.status = ?) as corrections', [DocumentRequestStatus::CorrectionRequested->value])
+            ->selectRaw('count(*) filter (where document_requests.status in (?, ?) and document_requests.due_at < ?) as overdue', [...DocumentRequestStatus::awaitingClientValues(), $now])
+            ->selectRaw('count(*) filter (where document_requests.status = ?) as approved', [DocumentRequestStatus::Approved->value])
+            ->toBase()
+            ->first();
+
         return [
             'stats' => [
                 'total_clients' => Client::query()->count(),
@@ -58,6 +74,12 @@ class DashboardService
                 'overdue_matters' => Matter::query()->overdue($now)->count(),
                 'open_tasks' => (int) $taskCounts->open_tasks,
                 'overdue_tasks' => (int) $taskCounts->overdue_tasks,
+                'requests_outstanding' => (int) $requestCounts->outstanding,
+                'requests_pending' => (int) $requestCounts->pending,
+                'requests_awaiting_review' => (int) $requestCounts->awaiting_review,
+                'requests_correction' => (int) $requestCounts->corrections,
+                'requests_overdue' => (int) $requestCounts->overdue,
+                'requests_approved' => (int) $requestCounts->approved,
             ],
             'status_breakdown' => array_map(fn (MatterStatus $status) => [
                 'status' => $status->value,

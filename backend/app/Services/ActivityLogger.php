@@ -42,4 +42,34 @@ class ActivityLogger
             'occurred_at' => $occurredAt ? Carbon::instance($occurredAt) : Carbon::now(),
         ]);
     }
+
+    /**
+     * An action taken by an external client through a secure link. Clients have no user account:
+     * actor_type is "client", actor_id is the document request the link belongs to and actor_label
+     * a snapshot of the client's name — never an administrator identity.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    public function recordClient(
+        Matter $matter,
+        ActivityEventType $type,
+        string $description,
+        string $clientLabel,
+        int $requestId,
+        ?Model $subject = null,
+        array $metadata = [],
+    ): ActivityEvent {
+        return ActivityEvent::create([
+            'matter_id' => $matter->getKey(),
+            'actor_type' => ActorType::Client,
+            'actor_id' => $requestId,
+            'actor_label' => $clientLabel,
+            'event_type' => $type,
+            'subject_type' => $subject?->getMorphClass(),
+            'subject_id' => $subject?->getKey(),
+            'description' => $description,
+            'metadata' => $metadata ?: null,
+            'occurred_at' => Carbon::now(),
+        ]);
+    }
 }

@@ -27,6 +27,24 @@ return [
         'max_upload_mb' => (int) env('DOCUMENTS_MAX_UPLOAD_MB', 20),
     ],
 
+    /*
+     | Phase 4 — client document requests and secure links.
+     | public_app_url: the client-facing web app that serves /client-upload (defaults to the first
+     | FRONTEND_URL). A localhost URL only works on the development machine itself.
+     */
+    'firm_name' => env('LEXORA_FIRM_NAME', 'Lexora Legal'),
+    'public_app_url' => rtrim((string) env('PUBLIC_APP_URL', trim(explode(',', (string) env('FRONTEND_URL', 'http://localhost:3000'))[0])), '/'),
+    'secure_links' => [
+        'upload_expiry_days' => (int) env('UPLOAD_LINK_EXPIRY_DAYS', 7),
+        'max_expiry_days' => 30,
+    ],
+    'public_links' => [
+        'views_per_minute' => (int) env('PUBLIC_LINK_VIEWS_PER_MINUTE', 60),
+        'uploads_per_minute' => (int) env('PUBLIC_LINK_UPLOADS_PER_MINUTE', 10),
+        // Failed lookups (unknown, malformed or revoked tokens) per IP before a 15-minute lockout.
+        'invalid_attempts' => (int) env('PUBLIC_LINK_INVALID_ATTEMPTS', 20),
+    ],
+
     'pagination' => [
         'default_per_page' => 15,
         'max_per_page' => 100,

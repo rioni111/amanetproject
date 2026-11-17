@@ -48,6 +48,14 @@ class MatterResource extends JsonResource
             'tasks_count' => $this->whenCounted('tasks'),
             'notes_count' => $this->whenCounted('notes'),
             'documents_count' => $this->whenHas('documents_count', fn () => (int) $this->documents_count),
+            'requests' => $this->when($this->hasAttribute('requests_open_count'), fn () => [
+                'open' => (int) $this->requests_open_count,
+                'pending' => (int) $this->requests_pending_count,
+                'awaiting_review' => (int) $this->requests_awaiting_review_count,
+                'correction_requested' => (int) $this->requests_correction_count,
+                'approved' => (int) $this->requests_approved_count,
+                'overdue' => (int) $this->requests_overdue_count,
+            ]),
         ];
     }
 }

@@ -4,8 +4,8 @@ namespace App\Enums;
 
 /**
  * Catalogue of activity event types. Matter, task, note and client events are emitted from
- * Phase 2 onwards (always inside the transaction of the change they record); the document,
- * request and signing cases document the events later phases will append.
+ * Phase 2, document events from Phase 3 and request/link/review events from Phase 4 — always inside
+ * the transaction of the change they record. The signing cases document what Phase 5 will append.
  *
  * The column is a plain string (no CHECK constraint), so adding cases needs no migration.
  */
@@ -42,17 +42,25 @@ enum ActivityEventType: string
     case DocumentRestored = 'document.restored';
     case DocumentDownloaded = 'document.downloaded';
 
-    // Phase 4: client document requests (catalogue only)
-    case DocumentRequested = 'document.requested';
-    case DocumentSubmitted = 'document.submitted';
-    case DocumentReviewed = 'document.reviewed';
+    // Phase 4: client document requests, secure upload links, submissions and review.
+    // Metadata never contains tokens, token hashes, storage paths, client messages or correction text.
+    case DocumentRequested = 'document.requested';            // request created
+    case DocumentRequestUpdated = 'document_request.updated';
+    case DocumentRequestCancelled = 'document_request.cancelled';
+    case LinkCreated = 'link.created';                        // upload link issued
+    case LinkRotated = 'link.rotated';                        // replacement issued, previous one revoked
+    case LinkRevoked = 'link.revoked';                        // revoked by an admin or by archiving the matter
+    case DocumentSubmitted = 'document.submitted';            // first client upload (actor: client)
+    case DocumentResubmitted = 'document.resubmitted';        // corrected client upload (actor: client)
+    case DocumentReviewStarted = 'document.review_started';
+    case DocumentApproved = 'document.approved';
     case CorrectionRequested = 'document.correction_requested';
-    case ClientResponded = 'client.responded';
+    case DocumentReviewed = 'document.reviewed';              // reserved (catalogue)
+    case ClientResponded = 'client.responded';                // reserved (catalogue)
 
-    // Phase 5–6: signing
+    // Phase 5–6: signing (catalogue only)
     case SigningRequested = 'signing.requested';
     case SigningViewed = 'signing.viewed';
     case SigningStarted = 'signing.started';
     case SigningCompleted = 'signing.completed';
-    case LinkRevoked = 'link.revoked';
 }
