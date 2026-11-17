@@ -248,6 +248,66 @@ Errors: `{ message, code }` — 404 `link_invalid` (unknown, malformed, wrong pu
 410 `link_expired` / `link_used` / `request_approved` / `request_cancelled` / `request_unavailable`, 429 `too_many_attempts`,
 422 validation (`errors.file`, `errors.message`). The token is checked before any file is parsed.
 
+## Endpoints (Phase 5 — electronic signing)
+
+### Administrator (session + CSRF)
+
+Request, link, document and version ids are resolved through their parents (scoped bindings): an id from another matter → 404.
+
+| Method | Path | Body / notes | Success |
+| --- | --- | --- | --- |
+| GET | `/api/signing-requests` | `search` (document title, signer, matter number/title), `status` (a status or `active`), `signer_type`, `sort` (`updated_at`, `created_at`, `signed_at`, `matter_number`), `direction`, `page`, `per_page` | 200 paginated `SigningRequest` |
+| GET | `/api/matters/{matter}/signing-requests` | same filters, scoped | 200 paginated |
+| POST | `/api/matters/{matter}/signing-requests` | `document_id*`, `document_version_id*` (the current `upload` version), `signer_type*` (`client`\|`admin`); client only: `signer_name*`, `signer_email`, `message` (≤ 2000), `issue_link`, `link_expires_in_days` (1–30). Admin requests designate the acting administrator; `signers` → 422 (one signer per PDF) | 201 `{ data, link: IssuedLink \| null }` |
+| GET | `…/signing-requests/{signingRequest}` | request + source/signed versions + active link | 200 `{ data, links: SecureLink[], evidence: SignatureRecord \| null }` |
+| GET | `…/signing-requests/{signingRequest}/evidence` | | 200 `{ data: SignatureRecord }` (404 until signed) |
+| POST | `…/{signingRequest}/links` | `expires_in_days`, `lock_version`; 409 if a usable link exists | 201 `{ data, link }` |
+| POST | `…/{signingRequest}/links/rotate` | revokes the current link, issues a new one | 201 `{ data, link }` |
+| POST | `…/{signingRequest}/links/{link}/revoke` | | 200 `{ data, revoked_link }` |
+| POST | `…/{signingRequest}/mark-shared` | `lock_version`; client request in `ready` with a usable link → `sent` (`delivery_channel = manual`). No e-mail is sent or claimed | 200 |
+| POST | `…/{signingRequest}/cancel` | `lock_version`; active requests only; revokes usable links | 200 |
+| POST | `…/{signingRequest}/admin-sign` | signature payload (below) + `lock_version`; designated administrator only; `confirmed_name` prohibited (the session's name is used) | 201 `SigningRequest` |
+| GET | `/api/matters/{matter}/documents/{document}/versions/{version}/signing-eligibility` | | 200 `{ data: { eligible, page_count, pages: [{page, width, height}], consent {version, text} } }`; 409/422 with the reason otherwise |
+| POST | `/api/matters/{matter}/documents/{document}/sign` | signature payload + `document_version_id*`: creates the administrator request and signs it in one transaction | 201 `SigningRequest` |
+
+**Signature payload** (admin and public): `method*` (`drawn`\|`typed`), `strokes` (drawn: ≤ 60 strokes of normalised `[x, y]`
+points, ≤ 500 per stroke, ≤ 4,000 total), `typed_name` (typed: ≤ 80, must match the signer), `page*`, `x*`, `y*` (0–1, top-left of
+the box on the displayed page), `width*` (fraction of the page width; converted to 100–320 pt), `consent*` (accepted),
+`consent_version*` (must equal the current `SigningConsent::VERSION`). Bodies over 256 KB → 413.
+
+Errors: 422 validation (incl. `confirmed_name`/`typed_name` not matching the signer, `placement`, `signature`), 422
+`{ code: "pdf_unsupported" }` (PDF the engine cannot sign) / `{ code: "signing_failed" }`, 409 (stale `lock_version`, wrong state,
+already signed, open request exists, newer version added, archived matter/document, open client review), 404 cross-matter ids.
+
+- **SigningRequest**: `id, matter_id, document_id, signer_type(+_label), signer_name, signer_email, message, status(+_label),
+  is_active, delivery_channel, delivery_status(+_label), sent_at, viewed_at, started_at, signed_at, cancelled_at,
+  cancellation_reason(+cancellation_label), matter {id, matter_number, title, status}, client, document {id, title, status,
+  current_version_id}, source_version, signed_version, active_link, created_by, created_at, updated_at, lock_version,
+  allowed_actions {issue_link, rotate_link, revoke_link, mark_shared, cancel, admin_sign}`.
+- **SignatureRecord**: signer snapshot, `confirmed_name`, `signature_method`, `page_number`, `placement`, source/signed version ids
+  and SHA-256, `consent_version`, `consent_text`, `consent_accepted_at`, `signed_at`, `ip_address`, `user_agent`, `identity_basis`.
+- Dashboard `stats` gained `signatures_pending, signatures_signed`; matter detail gained `signatures {total, active, sent, viewed,
+  started, signed}`; documents gained `active_signing_request`.
+
+### Public signing endpoints (no account, no cookies)
+
+Authorised only by the `X-Signing-Token` header (from the `/client-sign#<token>` fragment); `purpose = document_signing` links
+only. Same isolation as the upload endpoints (no session/CSRF middleware, Origin allow-list, `no-store`, `no-referrer`, `noindex`).
+Limits: `public-signing` (120/min per IP), `public-signing-complete` (10/min per IP); failed lookups count towards the IP lockout.
+GET requests never change state.
+
+| Method | Path | Body / notes | Success |
+| --- | --- | --- | --- |
+| GET | `/api/public/signing` | | 200 `{ data: { firm_name, document_title, version_label, file_name, signer_name, signer_email (masked), message, status, viewed, started, expires_at, consent {version, text} } }` |
+| GET | `/api/public/signing/document` | the pinned source PDF only (SHA-256 re-verified) | 200 `application/pdf`, `Content-Security-Policy: default-src 'none'; sandbox` |
+| POST | `/api/public/signing/view` | sent after the page rendered; idempotent | 200 `{ data: { status } }` |
+| POST | `/api/public/signing/start` | only after viewed; idempotent | 200 `{ data: { status } }` |
+| POST | `/api/public/signing/complete` | signature payload + `confirmed_name*` (must match the designated signer) | 201 `{ message, data: { status, signed_at, document_title } }` |
+
+Errors: `{ message, code }` — 404 `link_invalid` (unknown, malformed, wrong purpose, manually revoked — identical), 410
+`link_expired` / `already_signed` / `request_cancelled` / `request_unavailable` (archived), 409 (step order), 422 validation or
+`pdf_unsupported`, 429 `too_many_attempts`.
+
 ## Conventions for new endpoints (Phase 2+)
 
 - Route names `resource.action`, RESTful verbs, plural nouns (`/api/matters/{matter}/tasks`).

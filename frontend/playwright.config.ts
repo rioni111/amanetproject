@@ -15,6 +15,12 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"], ["html", { open: "never" }]],
   globalSetup: "./e2e/global-setup.ts",
+  // Whole-test budget. Every test drives several real pages against `php artisan serve`, which handles ONE
+  // request at a time on Windows (the page's parallel API calls queue), plus on-demand `next dev` compilation.
+  // Multi-page workflows normally take 19–30 s here, so Playwright's 30 s default left no headroom and a
+  // busy machine could time a passing workflow out. Individual waits stay strict (expect timeout below);
+  // the Phase 4/5 specs keep their own explicit 180 s budget.
+  timeout: 90_000,
   // Development servers compile routes on demand; allow for that on slower machines.
   expect: { timeout: 15_000 },
   use: {
@@ -59,6 +65,8 @@ export default defineConfig({
         PUBLIC_LINK_VIEWS_PER_MINUTE: "600",
         PUBLIC_LINK_UPLOADS_PER_MINUTE: "200",
         PUBLIC_LINK_INVALID_ATTEMPTS: "200",
+        PUBLIC_SIGNING_VIEWS_PER_MINUTE: "1000",
+        PUBLIC_SIGNING_COMPLETIONS_PER_MINUTE: "200",
       },
     },
     {

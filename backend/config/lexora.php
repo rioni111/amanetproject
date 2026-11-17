@@ -38,6 +38,16 @@ return [
         'upload_expiry_days' => (int) env('UPLOAD_LINK_EXPIRY_DAYS', 7),
         'max_expiry_days' => 30,
     ],
+    /*
+     | Phase 5 — electronic signing. Signing links stay valid while the signer reviews the document and are
+     | consumed only by a completed signature.
+     */
+    'signing' => [
+        'link_expiry_days' => (int) env('SIGNING_LINK_EXPIRY_DAYS', 7),
+        'views_per_minute' => (int) env('PUBLIC_SIGNING_VIEWS_PER_MINUTE', 120),
+        'completions_per_minute' => (int) env('PUBLIC_SIGNING_COMPLETIONS_PER_MINUTE', 10),
+    ],
+
     'public_links' => [
         'views_per_minute' => (int) env('PUBLIC_LINK_VIEWS_PER_MINUTE', 60),
         'uploads_per_minute' => (int) env('PUBLIC_LINK_UPLOADS_PER_MINUTE', 10),

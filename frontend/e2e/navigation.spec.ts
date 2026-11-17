@@ -17,11 +17,13 @@ test("sidebar navigation moves between workspace sections", async ({ page }) => 
   await expect(page).toHaveURL(/\/clients$/);
   await expect(page.getByRole("table", { name: "Clients" }).getByRole("row")).toHaveCount(9);
 
-  // Planned sections are visibly disabled, not links. (Phase 3 made "Documents" and Phase 4 "Client requests"
-  // working sections, so the check now uses the next planned one, "Signatures"; the new links are asserted instead.)
-  await expect(nav.getByRole("link", { name: /Signatures/ })).toHaveCount(0);
+  // Planned sections used to be visibly disabled, not links. Phase 3 (Documents), Phase 4 (Client requests) and
+  // Phase 5 (Signatures) made every planned section a working one, so no "Coming soon" item remains and each
+  // section link is asserted instead.
+  await expect(nav.getByText("Coming soon")).toHaveCount(0);
   await expect(nav.getByRole("link", { name: "Documents" })).toHaveAttribute("href", "/documents");
   await expect(nav.getByRole("link", { name: "Client requests" })).toHaveAttribute("href", "/document-requests");
+  await expect(nav.getByRole("link", { name: "Signatures" })).toHaveAttribute("href", "/signatures");
 });
 
 test("matters can be searched and filtered against the API", async ({ page }) => {

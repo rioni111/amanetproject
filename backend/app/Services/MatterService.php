@@ -7,10 +7,12 @@ use App\Enums\DocumentRequestStatus;
 use App\Enums\LinkRevocationReason;
 use App\Enums\MatterStatus;
 use App\Enums\Priority;
+use App\Enums\SigningCancellationReason;
 use App\Models\Client;
 use App\Models\Matter;
 use App\Models\User;
 use App\Services\Requests\SecureAccessLinkService;
+use App\Services\Signing\SigningLifecycle;
 use App\Support\LegalDate;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -202,6 +204,9 @@ class MatterService
             $this->activity->record($matter, ActivityEventType::MatterArchived,
                 "Matter archived (was {$from->label()}).", $actor, $matter,
                 ['from' => $from->value, 'to' => MatterStatus::Archived->value]);
+
+            // Unfinished signing becomes impossible: active signing requests are cancelled (their links revoked).
+            app(SigningLifecycle::class)->cancelActiveForMatter($matter, SigningCancellationReason::MatterArchived, $actor);
 
             // Client links for an archived (read-only) matter stop working immediately. Restoring the
             // matter does NOT reactivate them: new links must be issued deliberately.

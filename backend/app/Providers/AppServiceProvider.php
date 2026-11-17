@@ -11,9 +11,12 @@ use App\Models\DocumentVersion;
 use App\Models\Matter;
 use App\Models\MatterNote;
 use App\Models\SecureAccessLink;
+use App\Models\SignatureRecord;
+use App\Models\SigningRequest;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\Requests\PublicUploadLinkResolver;
+use App\Services\Signing\PublicSigningLinkResolver;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -48,6 +51,8 @@ class AppServiceProvider extends ServiceProvider
             'document_request' => DocumentRequest::class,
             'document_request_submission' => DocumentRequestSubmission::class,
             'secure_access_link' => SecureAccessLink::class,
+            'signing_request' => SigningRequest::class,
+            'signature_record' => SignatureRecord::class,
         ]);
 
         Password::defaults(fn () => $this->app->isProduction()
@@ -75,6 +80,14 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('public-upload', fn (Request $request) => [
             Limit::perMinute((int) config('lexora.public_links.uploads_per_minute', 10))->by('public-upload-ip:'.$request->ip()),
             Limit::perMinute(5)->by('public-upload-token:'.hash('sha256', (string) $request->header(PublicUploadLinkResolver::HEADER))),
+        ]);
+
+        // Phase 5 public signing: page/PDF/progress requests per IP; completions per IP and per token.
+        RateLimiter::for('public-signing', fn (Request $request) => Limit::perMinute((int) config('lexora.signing.views_per_minute', 120))
+            ->by('public-signing-ip:'.$request->ip()));
+        RateLimiter::for('public-signing-complete', fn (Request $request) => [
+            Limit::perMinute((int) config('lexora.signing.completions_per_minute', 10))->by('public-signing-complete-ip:'.$request->ip()),
+            Limit::perMinute(5)->by('public-signing-token:'.hash('sha256', (string) $request->header(PublicSigningLinkResolver::HEADER))),
         ]);
     }
 }

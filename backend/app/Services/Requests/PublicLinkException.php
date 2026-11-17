@@ -29,9 +29,26 @@ final class PublicLinkException extends RuntimeException
         parent::__construct($message);
     }
 
+    /** Phase 5 signing links: same codes where they mean the same, plus signing-specific outcomes. */
+    private const SIGNING_MESSAGES = [
+        'link_invalid' => [404, 'This signing link is not valid. It may have been mistyped, replaced by a newer link or withdrawn by the firm. Please contact the firm for a new link.'],
+        'link_expired' => [410, 'This signing link has expired. Please ask the firm for a new link.'],
+        'already_signed' => [410, 'This document has already been signed with this link. No further action is needed.'],
+        'request_cancelled' => [410, 'The firm has withdrawn this signing request. Please contact the firm if you have questions.'],
+        'request_unavailable' => [410, 'This signing request is no longer available. Please contact the firm.'],
+        'too_many_attempts' => [429, 'Too many attempts. Please wait a few minutes and try again.'],
+    ];
+
     public static function because(string $reason): self
     {
         [$status, $message] = self::MESSAGES[$reason] ?? self::MESSAGES['link_invalid'];
+
+        return new self($reason, $status, $message);
+    }
+
+    public static function signing(string $reason): self
+    {
+        [$status, $message] = self::SIGNING_MESSAGES[$reason] ?? self::SIGNING_MESSAGES['link_invalid'];
 
         return new self($reason, $status, $message);
     }

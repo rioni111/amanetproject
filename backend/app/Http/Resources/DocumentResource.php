@@ -33,6 +33,10 @@ class DocumentResource extends JsonResource
                     ? ['id' => $this->matter->client->id, 'name' => $this->matter->client->name]
                     : null,
             ]),
+            'active_signing_request' => $this->whenLoaded('activeSigningRequest', fn () => $this->activeSigningRequest ? [
+                'id' => $this->activeSigningRequest->id, 'status' => $this->activeSigningRequest->status->value,
+                'signer_type' => $this->activeSigningRequest->signer_type->value, 'signer_name' => $this->activeSigningRequest->signer_name,
+            ] : null),
             'archived_at' => $this->archived_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),

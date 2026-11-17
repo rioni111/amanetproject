@@ -5,9 +5,19 @@ import type {
   MatterStatus,
   Priority,
   SecureLinkState,
+  SigningStatus,
   SubmissionReviewStatus,
   TaskStatus,
 } from "@/types/api";
+
+export const SIGNING_STATUS_LABELS: Record<SigningStatus, string> = {
+  ready: "Ready to send",
+  sent: "Sent",
+  viewed: "Viewed",
+  started: "Started",
+  signed: "Signed",
+  cancelled: "Cancelled",
+};
 
 export const REQUEST_STATUS_LABELS: Record<DocumentRequestStatus, string> = {
   pending: "Awaiting client",

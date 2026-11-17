@@ -47,15 +47,30 @@ switch ($action) {
         echo "ok\n";
         break;
     case 'signing-token':
+        // Since Phase 5 a signing link must target a signing request: create one for the document the
+        // client submitted for this document request, and a real signing link for it.
         $request = DB::table('document_requests')->find($id) ?? exit(1);
+        $document = DB::table('documents')->find($request->document_id) ?? exit(1);
+        $signing = DB::table('signing_requests')->insertGetId([
+            'uuid' => (string) Str::uuid(), 'matter_id' => $request->matter_id, 'document_id' => $document->id,
+            'document_version_id' => $document->current_version_id, 'signer_type' => 'client', 'client_id' => $request->client_id,
+            'signer_name' => 'E2E Signer', 'status' => 'ready', 'delivery_status' => 'not_shared',
+            'created_at' => $now->copy()->subSecond(), 'updated_at' => $now,
+        ]);
         $token = SecureAccessLinkService::generateToken();
         DB::table('secure_access_links')->insert([
             'uuid' => (string) Str::uuid(), 'purpose' => 'document_signing', 'matter_id' => $request->matter_id,
-            'document_request_id' => $request->id, 'token_hash' => SecureAccessLinkService::hashToken($token),
+            'signing_request_id' => $signing, 'token_hash' => SecureAccessLinkService::hashToken($token),
             'expires_at' => $now->copy()->addDay(), 'max_uses' => 1, 'successful_uses' => 0,
             'created_at' => $now->copy()->subSecond(), 'updated_at' => $now,
         ]);
         echo $token."\n";
+        break;
+    case 'expire-signing':
+        // Expire the usable signing link of a signing request (Phase 5 E2E).
+        DB::table('secure_access_links')->where('signing_request_id', $id)->whereNull('revoked_at')->whereNull('consumed_at')
+            ->update(['created_at' => $now->copy()->subDays(2), 'expires_at' => $now->copy()->subMinute(), 'updated_at' => $now]) === 1 || exit(1);
+        echo "ok\n";
         break;
     default:
         fwrite(STDERR, "Unknown action.\n");

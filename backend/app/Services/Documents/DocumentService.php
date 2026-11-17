@@ -7,11 +7,13 @@ use App\Enums\DocumentCategory;
 use App\Enums\DocumentOrigin;
 use App\Enums\DocumentStatus;
 use App\Enums\DocumentVersionKind;
+use App\Enums\SigningCancellationReason;
 use App\Models\Document;
 use App\Models\DocumentVersion;
 use App\Models\Matter;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\Signing\SigningLifecycle;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -35,10 +37,15 @@ class DocumentService
 {
     public const STALE_MESSAGE = 'This document was changed by someone else after you opened it. Reload to see the latest version.';
 
+    private readonly SigningLifecycle $signing;
+
     public function __construct(
         private readonly ActivityLogger $activity,
         private readonly DocumentStorage $storage,
-    ) {}
+        ?SigningLifecycle $signing = null,
+    ) {
+        $this->signing = $signing ?? app(SigningLifecycle::class);
+    }
 
     /** @param array<string, mixed> $data validated: title?, description?, category */
     public function create(Matter $matter, UploadedFile $file, array $data, User $actor): Document
@@ -73,6 +80,8 @@ class DocumentService
             $document->assertLockVersion($lockVersion, self::STALE_MESSAGE);
             $document->assertNotArchived();
             $this->rejectSameAsCurrent($document, $sha256);
+            // A pending signing request is pinned to the old version: it must not sign a superseded file.
+            $this->signing->cancelActiveForDocument($matter, $document, SigningCancellationReason::SourceSuperseded, $actor);
 
             $version = $this->appendVersion($document, $versionUuid, $this->safeFilename($file->getClientOriginalName()),
                 $finalPath, $file->getSize(), $sha256, DocumentOrigin::Admin, $actor->id, $actor->name);
@@ -100,7 +109,33 @@ class DocumentService
     public function persistUpload(UploadedFile $file, int $matterId, string $documentUuid, callable $transaction): mixed
     {
         $sha256 = hash_file('sha256', $file->getRealPath());
-        $stagingPath = $this->storage->stage($file, $sha256);
+
+        return $this->persistStaged($this->storage->stage($file, $sha256), $sha256, $matterId, $documentUuid, $transaction);
+    }
+
+    /**
+     * persistUpload() for a file produced on the server (Phase 5: a generated signed PDF in a temp directory).
+     *
+     * @template T
+     *
+     * @param  callable(string $finalPath, string $sha256, string $versionUuid): T  $transaction
+     * @return T
+     */
+    public function persistLocalFile(string $localPath, int $size, int $matterId, string $documentUuid, callable $transaction): mixed
+    {
+        $sha256 = hash_file('sha256', $localPath);
+
+        return $this->persistStaged($this->storage->stageLocalFile($localPath, $size, $sha256), $sha256, $matterId, $documentUuid, $transaction);
+    }
+
+    /**
+     * @template T
+     *
+     * @param  callable(string $finalPath, string $sha256, string $versionUuid): T  $transaction
+     * @return T
+     */
+    private function persistStaged(string $stagingPath, string $sha256, int $matterId, string $documentUuid, callable $transaction): mixed
+    {
         $finalPath = null;
         try {
             $versionUuid = Str::uuid()->toString();
@@ -134,10 +169,10 @@ class DocumentService
     }
 
     /** Adds the next version to a document that the caller has locked (SELECT … FOR UPDATE). */
-    public function appendVersion(Document $document, string $uuid, string $filename, string $path, int $size, string $sha256, DocumentOrigin $origin, ?int $uploaderId, string $uploaderName): DocumentVersion
+    public function appendVersion(Document $document, string $uuid, string $filename, string $path, int $size, string $sha256, DocumentOrigin $origin, ?int $uploaderId, string $uploaderName, DocumentVersionKind $kind = DocumentVersionKind::Upload): DocumentVersion
     {
         $number = $document->latest_version_number + 1;
-        $version = $this->insertVersion($document, $number, $uuid, $filename, $path, $size, $sha256, $origin, $uploaderId, $uploaderName);
+        $version = $this->insertVersion($document, $number, $uuid, $filename, $path, $size, $sha256, $origin, $uploaderId, $uploaderName, $kind);
         $document->forceFill(['current_version_id' => $version->id, 'latest_version_number' => $number])->save();
 
         return $version;
@@ -217,14 +252,14 @@ class DocumentService
 
     // ------------------------------------------------------------------ internals
 
-    private function insertVersion(Document $document, int $number, string $uuid, string $filename, string $path, int $size, string $sha256, DocumentOrigin $origin, ?int $uploaderId, string $uploaderName): DocumentVersion
+    private function insertVersion(Document $document, int $number, string $uuid, string $filename, string $path, int $size, string $sha256, DocumentOrigin $origin, ?int $uploaderId, string $uploaderName, DocumentVersionKind $kind = DocumentVersionKind::Upload): DocumentVersion
     {
         $version = new DocumentVersion;
         $version->forceFill([
             'uuid' => $uuid,
             'document_id' => $document->id,
             'version_number' => $number,
-            'kind' => DocumentVersionKind::Upload,
+            'kind' => $kind,
             'origin' => $origin,
             'original_filename' => $filename,
             'storage_disk' => $this->storage->diskName(),
@@ -248,6 +283,10 @@ class DocumentService
             if ($document->status === $target) {
                 throw ValidationException::withMessages(['status' => [$target === DocumentStatus::Archived
                     ? 'This document is already archived.' : 'This document is not archived.']]);
+            }
+            if ($target === DocumentStatus::Archived) {
+                // Archived documents are read-only: unfinished signing becomes impossible (links revoked too).
+                $this->signing->cancelActiveForDocument($matter, $document, SigningCancellationReason::DocumentArchived, $actor);
             }
             $document->forceFill([
                 'status' => $target,

@@ -14,6 +14,9 @@ use App\Http\Controllers\Api\MatterLifecycleController;
 use App\Http\Controllers\Api\MatterNoteController;
 use App\Http\Controllers\Api\MatterTaskController;
 use App\Http\Controllers\Api\PublicDocumentUploadController;
+use App\Http\Controllers\Api\PublicSigningController;
+use App\Http\Controllers\Api\SigningRequestController;
+use App\Http\Middleware\AuthorizePublicSigningLink;
 use App\Http\Middleware\AuthorizePublicUploadLink;
 use Illuminate\Support\Facades\Route;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
@@ -94,6 +97,27 @@ Route::middleware(['auth:sanctum', 'admin', 'throttle:api'])->group(function () 
         });
     });
 
+    // Phase 5 — electronic signing. Request and link ids are resolved through their parents (scoped bindings).
+    Route::scopeBindings()->prefix('matters/{matter}')->whereNumber(['matter', 'signingRequest', 'link', 'document', 'version'])->name('matters.')->group(function () {
+        Route::get('signing-requests', [SigningRequestController::class, 'index'])->name('signing-requests.index');
+        Route::post('signing-requests', [SigningRequestController::class, 'store'])->name('signing-requests.store');
+        Route::prefix('signing-requests/{signingRequest}')->name('signing-requests.')->group(function () {
+            Route::get('/', [SigningRequestController::class, 'show'])->name('show');
+            Route::get('evidence', [SigningRequestController::class, 'evidence'])->name('evidence');
+            Route::post('links', [SigningRequestController::class, 'issueLink'])->name('links.store');
+            Route::post('links/rotate', [SigningRequestController::class, 'rotateLink'])->name('links.rotate');
+            Route::post('links/{link}/revoke', [SigningRequestController::class, 'revokeLink'])->name('links.revoke');
+            Route::post('mark-shared', [SigningRequestController::class, 'markShared'])->name('mark-shared');
+            Route::post('cancel', [SigningRequestController::class, 'cancel'])->name('cancel');
+            Route::post('admin-sign', [SigningRequestController::class, 'adminSign'])->name('admin-sign');
+        });
+        Route::post('documents/{document}/sign', [SigningRequestController::class, 'signDocument'])->name('documents.sign');
+        Route::get('documents/{document}/versions/{version}/signing-eligibility', [SigningRequestController::class, 'eligibility'])->name('documents.versions.signing-eligibility');
+    });
+
+    // Workspace-wide signing requests.
+    Route::get('signing-requests', [SigningRequestController::class, 'library'])->name('signing-requests.index');
+
     // Workspace-wide document library (search, filters, sorting, pagination).
     Route::get('documents', [DocumentController::class, 'library'])->name('documents.index');
 
@@ -115,4 +139,19 @@ Route::prefix('public/document-upload')->name('public.document-upload.')
             ->middleware(['throttle:public-link', AuthorizePublicUploadLink::class])->name('show');
         Route::post('submit', [PublicDocumentUploadController::class, 'submit'])
             ->middleware(['throttle:public-upload', AuthorizePublicUploadLink::class])->name('submit');
+    });
+
+/*
+| Public signing endpoints (Phase 5): the same isolation as the upload endpoints, authorised only by a
+| document_signing link in the X-Signing-Token header. GET requests never change state; the view and start
+| milestones are explicit POSTs from the signing page.
+*/
+Route::prefix('public/signing')->name('public.signing.')
+    ->withoutMiddleware([EnsureFrontendRequestsAreStateful::class])
+    ->group(function () {
+        Route::get('/', [PublicSigningController::class, 'show'])->middleware(['throttle:public-signing', AuthorizePublicSigningLink::class])->name('show');
+        Route::get('document', [PublicSigningController::class, 'document'])->middleware(['throttle:public-signing', AuthorizePublicSigningLink::class])->name('document');
+        Route::post('view', [PublicSigningController::class, 'view'])->middleware(['throttle:public-signing', AuthorizePublicSigningLink::class])->name('view');
+        Route::post('start', [PublicSigningController::class, 'start'])->middleware(['throttle:public-signing', AuthorizePublicSigningLink::class])->name('start');
+        Route::post('complete', [PublicSigningController::class, 'complete'])->middleware(['throttle:public-signing-complete', AuthorizePublicSigningLink::class])->name('complete');
     });

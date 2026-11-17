@@ -30,6 +30,7 @@ import { ActivityTimeline } from "@/features/activity/activity-timeline";
 import { DocumentsPanel } from "@/features/documents/documents-panel";
 import { NotesPanel } from "@/features/notes/notes-panel";
 import { RequestsPanel } from "@/features/requests/requests-panel";
+import { SignaturesPanel } from "@/features/signing/signatures-panel";
 import { TasksPanel } from "@/features/tasks/tasks-panel";
 import { ApiError } from "@/lib/api/errors";
 import { formatDate, formatDateTime } from "@/lib/utils/format";
@@ -40,7 +41,7 @@ import { useMatter } from "./api";
 import { ArchiveRestoreButton, PriorityControl, StatusControl } from "./matter-actions";
 import { MatterFormDialog } from "./matter-form-dialog";
 
-const TABS = ["overview", "tasks", "documents", "requests", "notes", "activity"] as const;
+const TABS = ["overview", "tasks", "documents", "requests", "signatures", "notes", "activity"] as const;
 type Tab = (typeof TABS)[number];
 
 export function MatterDetailView({ id }: { id: number }) {
@@ -168,6 +169,7 @@ function MatterWorkspace({ matter }: { matter: Matter }) {
           { id: "tasks", label: "Tasks", count: matter.open_tasks_count ?? 0 },
           { id: "documents", label: "Documents", count: matter.documents_count ?? 0 },
           { id: "requests", label: "Client requests", count: matter.requests?.open ?? 0 },
+          { id: "signatures", label: "Signatures", count: matter.signatures?.active ?? 0 },
           { id: "notes", label: "Internal notes", count: matter.notes_count ?? 0 },
           { id: "activity", label: "Activity" },
         ]}
@@ -191,6 +193,11 @@ function MatterWorkspace({ matter }: { matter: Matter }) {
       {tab === "requests" ? (
         <TabPanel idPrefix="matter" id="requests">
           <RequestsPanel matter={matter} />
+        </TabPanel>
+      ) : null}
+      {tab === "signatures" ? (
+        <TabPanel idPrefix="matter" id="signatures">
+          <SignaturesPanel matter={matter} />
         </TabPanel>
       ) : null}
       {tab === "notes" ? (

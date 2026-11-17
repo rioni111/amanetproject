@@ -42,6 +42,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
         </ul>
       </div>
 
+      {UPCOMING_NAV.length > 0 ? (
       <div>
         <p className="mb-2 px-3 text-[11px] font-semibold tracking-[0.08em] text-sidebar-muted uppercase">Coming soon</p>
         <ul className="flex flex-col gap-0.5">
@@ -61,6 +62,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
           ))}
         </ul>
       </div>
+      ) : null}
     </nav>
   );
 }

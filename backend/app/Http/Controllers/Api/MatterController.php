@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\DocumentRequestStatus;
 use App\Enums\MatterStatus;
+use App\Enums\SigningStatus;
 use App\Enums\TaskStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Matters\IndexMattersRequest;
@@ -113,6 +114,13 @@ class MatterController extends Controller
                 'documentRequests as requests_correction_count' => fn (Builder $q) => $q->where('status', DocumentRequestStatus::CorrectionRequested->value),
                 'documentRequests as requests_approved_count' => fn (Builder $q) => $q->where('status', DocumentRequestStatus::Approved->value),
                 'documentRequests as requests_overdue_count' => fn (Builder $q) => $q->overdue($now),
+                // Phase 5: signing requests of this matter.
+                'signingRequests as signatures_active_count' => fn (Builder $q) => $q->whereIn('status', SigningStatus::activeValues()),
+                'signingRequests as signatures_sent_count' => fn (Builder $q) => $q->where('status', SigningStatus::Sent->value),
+                'signingRequests as signatures_viewed_count' => fn (Builder $q) => $q->where('status', SigningStatus::Viewed->value),
+                'signingRequests as signatures_started_count' => fn (Builder $q) => $q->where('status', SigningStatus::Started->value),
+                'signingRequests as signatures_signed_count' => fn (Builder $q) => $q->where('status', SigningStatus::Signed->value),
+                'signingRequests as signatures_total_count',
             ])
             ->findOrFail($matter->getKey());
     }

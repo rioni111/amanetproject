@@ -17,7 +17,7 @@ const MIN_SCALE = 0.5;
 const MAX_SCALE = 3;
 
 /** PDF.js is loaded only in the browser, and only when a preview is opened. */
-async function loadPdfJs() {
+export async function loadPdfJs() {
   const pdfjs = await import("pdfjs-dist");
   pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
   return pdfjs;

@@ -38,6 +38,11 @@ class SecureAccessLink extends Model
         return $this->belongsTo(DocumentRequest::class);
     }
 
+    public function signingRequest(): BelongsTo
+    {
+        return $this->belongsTo(SigningRequest::class);
+    }
+
     public function matter(): BelongsTo
     {
         return $this->belongsTo(Matter::class);

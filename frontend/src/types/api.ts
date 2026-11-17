@@ -74,6 +74,7 @@ export interface Matter {
   notes_count?: number;
   documents_count?: number;
   requests?: MatterRequestCounts;
+  signatures?: MatterSignatureCounts;
 }
 
 export interface Task {
@@ -159,6 +160,7 @@ export interface LegalDocument {
   current_version?: DocumentVersion;
   uploaded_by?: { id: number; name: string } | null;
   matter?: { id: number; matter_number: string; title: string; status: MatterStatus; client: { id: number; name: string } | null };
+  active_signing_request?: { id: number; status: SigningStatus; signer_type: SignerType; signer_name: string } | null;
   archived_at: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -286,6 +288,102 @@ export interface PublicSubmissionResult {
   is_correction: boolean;
 }
 
+export const SIGNING_STATUSES = ["ready", "sent", "viewed", "started", "signed", "cancelled"] as const;
+export type SigningStatus = (typeof SIGNING_STATUSES)[number];
+export type SignerType = "admin" | "client";
+
+export interface SigningRequest {
+  id: number;
+  matter_id: number;
+  document_id: number;
+  signer_type: SignerType;
+  signer_type_label: string;
+  signer_name: string;
+  signer_email: string | null;
+  message: string | null;
+  status: SigningStatus;
+  status_label: string;
+  is_active: boolean;
+  delivery_channel: "manual" | "email" | null;
+  delivery_status: "not_shared" | "shared_manually";
+  delivery_status_label: string;
+  sent_at: string | null;
+  viewed_at: string | null;
+  started_at: string | null;
+  signed_at: string | null;
+  cancelled_at: string | null;
+  cancellation_reason: string | null;
+  cancellation_label: string | null;
+  matter?: { id: number; matter_number: string; title: string; status: MatterStatus };
+  client?: { id: number; name: string } | null;
+  document?: { id: number; title: string; status: DocumentStatus; current_version_id: number | null };
+  source_version?: DocumentVersion;
+  signed_version?: DocumentVersion | null;
+  active_link?: SecureLink | null;
+  created_by?: { id: number; name: string } | null;
+  created_at: string | null;
+  updated_at: string | null;
+  lock_version: number;
+  allowed_actions: {
+    issue_link: boolean;
+    rotate_link: boolean;
+    revoke_link: boolean;
+    mark_shared: boolean;
+    cancel: boolean;
+    admin_sign: boolean;
+  };
+}
+
+/** Evidence of a completed signature (administrators only). */
+export interface SignatureEvidence {
+  id: number;
+  signing_request_id: number;
+  signer_type: SignerType;
+  signer_name: string;
+  signer_email: string | null;
+  confirmed_name: string;
+  identity_basis: string;
+  signature_method: "drawn" | "typed";
+  signature_method_label: string;
+  page_number: number;
+  placement: { page: number; x: number; y: number; width: number; page_width_pt: number; page_height_pt: number };
+  source_version_id: number;
+  source_sha256: string;
+  signed_version_id: number;
+  signed_sha256: string;
+  consent_version: string;
+  consent_text: string;
+  consent_accepted_at: string;
+  signed_at: string;
+  ip_address: string | null;
+  user_agent: string | null;
+}
+
+export interface MatterSignatureCounts {
+  total: number;
+  active: number;
+  sent: number;
+  viewed: number;
+  started: number;
+  signed: number;
+}
+
+/** What the public signing page receives — nothing else about the firm's records. */
+export interface PublicSigningInfo {
+  firm_name: string;
+  document_title: string;
+  version_label: string;
+  file_name: string;
+  signer_name: string;
+  signer_email: string | null;
+  message: string | null;
+  status: SigningStatus;
+  viewed: boolean;
+  started: boolean;
+  expires_at: string;
+  consent: { version: string; text: string };
+}
+
 export interface PaginationMeta {
   current_page: number;
   last_page: number;
@@ -319,6 +417,8 @@ export interface DashboardStats {
   requests_correction: number;
   requests_overdue: number;
   requests_approved: number;
+  signatures_pending: number;
+  signatures_signed: number;
 }
 
 export interface DashboardSummary {

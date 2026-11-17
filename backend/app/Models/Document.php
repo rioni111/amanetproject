@@ -5,10 +5,12 @@ namespace App\Models;
 use App\Enums\DocumentCategory;
 use App\Enums\DocumentOrigin;
 use App\Enums\DocumentStatus;
+use App\Enums\SigningStatus;
 use App\Models\Concerns\HasLockVersion;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 /**
@@ -46,6 +48,17 @@ class Document extends Model
     public function currentVersion(): BelongsTo
     {
         return $this->belongsTo(DocumentVersion::class, 'current_version_id');
+    }
+
+    public function signingRequests(): HasMany
+    {
+        return $this->hasMany(SigningRequest::class);
+    }
+
+    /** The open signing request of this document, if any (at most one: partial unique index). */
+    public function activeSigningRequest(): HasOne
+    {
+        return $this->hasOne(SigningRequest::class)->whereIn('status', SigningStatus::activeValues());
     }
 
     public function uploader(): BelongsTo

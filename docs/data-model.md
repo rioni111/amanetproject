@@ -200,7 +200,12 @@ administrator, or once per archive with `links_revoked` count), `document.submit
 submission, document and version ids, SHA-256, file name/size, `has_client_message`), `document.review_started`,
 `document.approved`, `document.correction_requested` (`reason_recorded: true` — the reason text itself is stored only on the
 submission). Status transitions are in `{from, to}`. Tokens, token hashes, URLs, paths, client messages and correction reasons
-are never part of any event. Catalogued for Phase 5–6: `signing.requested|viewed|started|completed`.
+are never part of any event. Phase 5 adds `signing.requested`, `signing.link_created`, `signing.link_rotated`,
+`signing.link_revoked`, `signing.invitation_shared`, `signing.cancelled` (admin actor; metadata: signing request, document and
+version ids, `{from, to}`, reason, link ids/counts), `signing.viewed` and `signing.started` (**actor_type `client`**, actor_id =
+the signing request id, `source: secure_link`), `signing.completed` and `document.signed` (admin or client actor; source and signed
+version ids/numbers, signed SHA-256, signer type, signature method). Signature strokes, typed names and consent text are never
+copied into activity.
 
 ### `documents` (Phase 3)
 
@@ -232,7 +237,7 @@ requests, which reference specific versions. A document never becomes "signed" b
 | uuid | uuid **unique** | stored file name |
 | document_id | FK → documents | `RESTRICT` |
 | version_number | integer | `CHECK >= 1`, **`UNIQUE (document_id, version_number)`** |
-| kind | varchar(20) default `upload` | `upload, signed` (CHECK) — Phase 5 adds signed outputs as new versions |
+| kind | varchar(20) default `upload` | `upload, signed` (CHECK) — Phase 5 appends signed outputs as new `signed` versions (only `upload` versions can be signed) |
 | origin | varchar(20) | `admin, client` (CHECK) |
 | original_filename | varchar(255) | sanitised client name (metadata only), non-blank, indexed for search |
 | storage_disk | varchar(50) | `documents` |
@@ -274,9 +279,10 @@ Trigger `matters_client_change_guard` refuses changing a matter's client while i
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id`, `uuid` | bigint / uuid | |
-| `purpose` | varchar(30) | CHECK ∈ `document_upload, document_signing`; upload links require `document_request_id` |
-| `matter_id` | FK → matters | composite FK `(document_request_id, matter_id)` → `document_requests (id, matter_id)` |
+| `purpose` | varchar(30) | CHECK ∈ `document_upload, document_signing`; CHECK `secure_access_links_target` (Phase 5): an upload link targets only a document request, a signing link only a signing request |
+| `matter_id` | FK → matters | composite FKs `(document_request_id, matter_id)` → `document_requests (id, matter_id)` and `(signing_request_id, matter_id)` → `signing_requests (id, matter_id)` |
 | `document_request_id` | bigint null | |
+| `signing_request_id` | bigint null | Phase 5; indexed |
 | `token_hash` | char(64) **unique** | SHA-256 hex of a 256-bit random token; CHECK `^[0-9a-f]{64}$`; the token is never stored |
 | `expires_at` | timestamptz | CHECK `expires_at > created_at` |
 | `revoked_at`, `revocation_reason`, `revoked_by` | | reason ∈ `revoked, replaced, request_approved, request_cancelled, matter_archived`; CHECK both or neither |
@@ -285,7 +291,9 @@ Trigger `matters_client_change_guard` refuses changing a matter's client while i
 | `created_by` | FK → users null | |
 
 Partial unique index `secure_access_links_one_usable_upload_link (document_request_id) WHERE purpose='document_upload' AND
-revoked_at IS NULL AND consumed_at IS NULL`: at most one link per request can work.
+revoked_at IS NULL AND consumed_at IS NULL`: at most one link per request can work. Phase 5 adds the same guarantee for signing
+links (`secure_access_links_one_usable_signing_link` on `signing_request_id`). A signing link is consumed only by a completed
+signature (opening and starting never consume it).
 
 ### `document_request_submissions` (Phase 4)
 
@@ -305,6 +313,55 @@ Trigger `document_request_submissions_guard`: no DELETE; submitted facts never c
 
 Additive change to an existing table: `documents` gained the UNIQUE constraint `(id, matter_id)` (composite FK target).
 
+### `signing_requests` (Phase 5)
+
+One designated signer for one immutable source version of one document — **one signer per PDF**.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id`, `uuid` | bigint / uuid unique | the uuid's first 12 hex characters are the caption reference `LX-…` |
+| `matter_id` | FK → matters (RESTRICT) | |
+| `document_id` | bigint | composite FK `(document_id, matter_id)` → `documents (id, matter_id)` |
+| `document_version_id` | bigint | the **source** PDF; composite FK `(document_version_id, document_id)` → `document_versions` |
+| `signer_type` | varchar(20) | `admin, client` (CHECK) |
+| `signer_user_id` | FK → users null (RESTRICT) | `CHECK ((signer_type='admin') = (signer_user_id IS NOT NULL))` |
+| `client_id` | FK → clients null (RESTRICT) | `CHECK ((signer_type='client') = (client_id IS NOT NULL))`; must be the matter's client (trigger) |
+| `signer_name`, `signer_email` | varchar(200) / varchar(255) null | snapshot; name not blank |
+| `message` | text null | shown to the signer |
+| `status` | varchar(20) default `ready` | `ready, sent, viewed, started, signed, cancelled` (CHECK) |
+| `delivery_channel` | varchar(20) null | `manual` (Phase 5), `email` reserved for Phase 6 |
+| `delivery_status` | varchar(30) default `not_shared` | `not_shared, shared_manually`; CHECK consistent with `sent_at`/channel |
+| `sent_at`, `viewed_at`, `started_at`, `signed_at`, `cancelled_at` | timestamptz null | server time; CHECK each status has its timestamp, and sent ≤ viewed ≤ started ≤ signed |
+| `cancellation_reason`, `cancelled_by` | varchar(30) null / FK users (SET NULL) | `manual, matter_archived, document_archived, source_superseded`; `(status='cancelled') = (cancelled_at AND reason NOT NULL)` |
+| `signed_document_version_id` | bigint unique null | composite FK → `document_versions (id, document_id)`; `(status='signed') = (signed_at AND signed version NOT NULL)`; differs from the source |
+| `created_by` | FK → users null (SET NULL) | |
+| `lock_version` | int ≥ 1 | optimistic concurrency |
+
+Indexes: partial unique `signing_requests_one_active_per_document (document_id) WHERE status IN ('ready','sent','viewed','started')`,
+`(matter_id, status)`, `status`, `document_id`, `created_at`, `updated_at`, unique `(id, matter_id)` (FK target of links).
+Triggers: `signing_requests_insert_guard` (source version must be `kind = upload`; client signer = matter client) and
+`signing_requests_update_guard` (matter/document/source/signer never change; `signed`/`cancelled` are final; no DELETE).
+
+### `signature_records` (Phase 5, immutable)
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `signing_request_id` | FK → signing_requests **unique** (RESTRICT) | one record per request |
+| `document_id` | bigint | |
+| `signer_type`, `signer_user_id`, `signer_name`, `signer_email` | | designated signer snapshot (no FK on the user: immutable row) |
+| `confirmed_name` | varchar(200) | the name the signer confirmed |
+| `signature_method` | varchar(20) | `drawn, typed` (CHECK) |
+| `page_number`, `placement` | int ≥ 1 / jsonb | normalised `x, y, width`, page size in points and `rect_pt` (the exact rectangle in PDF points) |
+| `source_document_version_id`, `source_sha256` | bigint / char(64) | composite FK → `document_versions (id, document_id)` |
+| `signed_document_version_id`, `signed_sha256` | bigint unique / char(64) | composite FK; CHECK hex-64 and source ≠ signed |
+| `consent_version`, `consent_text`, `consent_accepted_at` | varchar(40) / text / timestamptz | the exact statement accepted (`SigningConsent`) |
+| `signed_at` | timestamptz | server time (also printed in UTC in the PDF caption) |
+| `ip_address`, `user_agent` | varchar(45) / varchar(255) null | at completion |
+| `created_at` | timestamptz | no `updated_at` |
+
+Trigger `signature_records_no_update_delete` rejects every `UPDATE`/`DELETE`. Signature strokes and typed text are not stored as
+data (they exist only as drawing operations inside the signed PDF).
+
 ## Seed data
 
 `DemoWorkspaceSeeder` (development only, idempotent — keyed on `reference_number`, `matter_number`, `(matter_id, title)`,
@@ -316,9 +373,8 @@ seeding time. Emails use reserved `example.*` domains and `555-01xx` phone numbe
 
 | Table | Phase | Key columns & constraints |
 | --- | --- | --- |
-| `signing_requests` | 5 | `document_version_id` FK (the exact PDF signed), `matter_id`, **one signer** (`signer_name`, `signer_email`, optional `client_id`), `signer_type` (`admin, client`), `status` (`sent, viewed, started, signed, revoked, expired`), `sent_at, viewed_at, started_at, signed_at`, `signed_document_version_id` FK, `access_link_id`; partial unique index preventing two active requests for the same version |
-| `signature_events` | 5–6 | `signing_request_id`, `event` (sent/viewed/started/signed/revoked), `occurred_at`, `ip_address`, `user_agent`, `metadata` jsonb — append-only |
 | `notifications` | 6 | Laravel's notifications table (`notifiable` morph, `data` jsonb, `read_at`) for admin alerts |
+| e-mail delivery log | 6 | per-message delivery outcome for upload/signing invitations, reminders and expiry notices (Phase 5 keeps `delivery_status` separate from signing progress for this) |
 
-The final signed PDF is a regular immutable `document_versions` row (with its SHA-256) referenced by
-`signing_requests.signed_document_version_id`, so it is automatically associated with the matter and its history.
+The signing history planned as a separate `signature_events` table was implemented instead as progress timestamps on
+`signing_requests`, the immutable `signature_records` row and typed `activity_events` (Phase 5).

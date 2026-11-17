@@ -2,6 +2,7 @@
 
 import {
   Archive,
+  PenLine,
   ArchiveRestore,
   ArrowLeft,
   Download,
@@ -42,6 +43,8 @@ import { useArchiveDocument, useDocument, useDocumentVersions, useUpdateDocument
 import { DocumentCategoryBadge, useDownload } from "./document-list";
 import { DocumentUploadDialog } from "./document-upload-dialog";
 import { PdfViewerDialog } from "./pdf-viewer-dialog";
+import { AdminSignDialog } from "@/features/signing/admin-sign-dialog";
+import { signingHref } from "@/features/signing/api";
 
 export function DocumentDetailView({ matterId, documentId }: { matterId: number; documentId: number }) {
   const document = useDocument(matterId, documentId);
@@ -95,6 +98,7 @@ function DocumentWorkspace({ document }: { document: LegalDocument }) {
   const toggle = useArchiveDocument(document.matter_id, document.id, !archived);
   const toast = useToast();
   const current = document.current_version;
+  const [signing, setSigning] = React.useState(false);
 
   return (
     <div className="flex flex-col gap-6">
@@ -145,6 +149,12 @@ function DocumentWorkspace({ document }: { document: LegalDocument }) {
               </Button>
             </>
           ) : null}
+          {current && current.kind === "upload" && !readOnly && !document.active_signing_request ? (
+            <Button onClick={() => setSigning(true)}>
+              <PenLine aria-hidden />
+              Sign PDF
+            </Button>
+          ) : null}
           <Button variant="secondary" onClick={() => setUploading(true)} disabled={readOnly}>
             <FileUp aria-hidden />
             New version
@@ -165,6 +175,16 @@ function DocumentWorkspace({ document }: { document: LegalDocument }) {
           {matterArchived
             ? "The matter is archived, so this document is read-only. Every version can still be previewed and downloaded."
             : "This document is archived. All versions are kept and can be previewed and downloaded; restore it to make changes."}
+        </p>
+      ) : null}
+
+      {document.active_signing_request ? (
+        <p role="status" className="rounded-lg border border-info/20 bg-info-soft px-4 py-3 text-[13px] text-info" data-testid="active-signing-note">
+          A signing request for {document.active_signing_request.signer_name} is open ({document.active_signing_request.status}).{" "}
+          <Link href={signingHref({ id: document.active_signing_request.id, matter_id: document.matter_id })} className="font-medium underline">
+            Open the signing request
+          </Link>
+          {" "}— a new signature can be added once it is completed or cancelled.
         </p>
       ) : null}
 
@@ -212,6 +232,16 @@ function DocumentWorkspace({ document }: { document: LegalDocument }) {
         target={{ kind: "version", matterId: document.matter_id, document }}
       />
       <EditDocumentDialog open={editing} onOpenChange={setEditing} document={document} />
+      {current ? (
+        <AdminSignDialog
+          open={signing}
+          onOpenChange={setSigning}
+          matterId={document.matter_id}
+          documentId={document.id}
+          documentTitle={document.title}
+          version={current}
+        />
+      ) : null}
       <ConfirmDialog
         open={confirmArchive}
         onOpenChange={setConfirmArchive}
@@ -290,6 +320,12 @@ function VersionHistory({
                   <p className="flex flex-wrap items-center gap-2 text-sm font-medium break-all text-foreground">
                     {version.original_filename}
                     {version.is_current ? <Badge tone="primary">Current</Badge> : null}
+                    {version.kind === "signed" ? (
+                      <Badge tone="info" data-testid="signed-version-badge">
+                        <PenLine aria-hidden className="size-3" />
+                        Signed
+                      </Badge>
+                    ) : null}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {formatFileSize(version.file_size)} · {formatDateTime(version.created_at)} · {version.uploaded_by?.name ?? "Unknown"}
