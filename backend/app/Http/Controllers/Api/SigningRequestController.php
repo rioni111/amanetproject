@@ -20,6 +20,7 @@ use App\Models\SigningRequest;
 use App\Services\Requests\IssuedLink;
 use App\Services\Signing\SigningRequestService;
 use App\Services\Signing\SigningService;
+use App\Support\SigningConsent;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Gate;
@@ -133,7 +134,10 @@ class SigningRequestController extends Controller
         Gate::authorize('view', $matter);
         $pages = $this->requests->eligibility($matter, $document, $version);
 
-        return response()->json(['data' => ['eligible' => true, 'page_count' => count($pages), 'pages' => $pages]]);
+        return response()->json(['data' => [
+            'eligible' => true, 'page_count' => count($pages), 'pages' => $pages,
+            'consent' => ['version' => SigningConsent::VERSION, 'text' => SigningConsent::TEXT],
+        ]]);
     }
 
     public static function loadDetail(SigningRequest $request, bool $withHistory = false): SigningRequest

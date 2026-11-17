@@ -3,6 +3,7 @@
 namespace App\Services\Signing;
 
 use App\Enums\SecureLinkPurpose;
+use App\Enums\SigningCancellationReason;
 use App\Enums\SigningStatus;
 use App\Models\Matter;
 use App\Models\SecureAccessLink;
@@ -67,7 +68,9 @@ class PublicSigningLinkResolver
             throw PublicLinkException::signing('already_signed');
         }
         if ($request->status === SigningStatus::Cancelled) {
-            throw PublicLinkException::signing($matter->isArchived() ? 'request_unavailable' : 'request_cancelled');
+            // Archiving closes a request for good (restoring the matter does not revive it); explain it the same way.
+            $archived = $matter->isArchived() || $request->cancellation_reason === SigningCancellationReason::MatterArchived;
+            throw PublicLinkException::signing($archived ? 'request_unavailable' : 'request_cancelled');
         }
         if ($matter->isArchived()) {
             throw PublicLinkException::signing('request_unavailable');
