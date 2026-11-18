@@ -344,7 +344,7 @@ The only optimisation is the OPcache requirement, a configuration change. No cod
 | --- | --- |
 | `composer audit` | no advisories |
 | `npm audit --omit=dev` | 0 vulnerabilities |
-| `npm audit` | 15 → 14 after a lockfile-only `npm audit fix`; remaining: `picomatch` ReDoS in ESLint's toolchain, no patched version (P7-007) |
+| `npm audit` | 15 entries (6 moderate, 9 high; 2 advisories) → **14 entries, 14 high, 0 moderate** after a lockfile-only `npm audit fix`. The `minimatch` advisory is resolved; the remaining one is the `picomatch` ReDoS (GHSA-fc5q-39xc-vjpf) in ESLint's toolchain, listed once for each dependent package, with no patched version (P7-007) |
 | Added | `@axe-core/playwright` 4.14.0 (dev, exact pin) |
 
 Both audits now run in `verify-windows.bat`.
@@ -442,7 +442,7 @@ archived afterwards.
 | P7-004 | P2 | API security headers, `X-Powered-By` | Fixed |
 | P7-005 | P3 | Web CSP hardening | Fixed (`'unsafe-inline'` accepted) |
 | P7-006 | P2 | Insecure cookie line in `.env.example` | Fixed |
-| P7-007 | P3 | Dev-tool npm advisories | 6 fixed / 14 documented |
+| P7-007 | P3 | Dev-tool npm advisories | `minimatch` fixed; `picomatch` documented (14 high entries, dev-only) |
 | P7-008 | P2 | Archived matters in working views | Fixed |
 | P7-009 | P2 | Dialog focus not returned | Fixed |
 | P7-010 | P3 | Recipient address wrapping | Fixed |

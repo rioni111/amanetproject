@@ -203,7 +203,7 @@ basis: possession of the link and the confirmed name, with no independent identi
 | --- | --- |
 | `composer audit` | no advisories |
 | `npm audit --omit=dev` (runtime) | 0 vulnerabilities |
-| `npm audit` (all) | before: 15 (6 moderate, 9 high), all in ESLint's toolchain. After `npm audit fix` (lockfile only): 14 high, all `picomatch` ReDoS via `eslint-config-next` — no patched version exists; not shipped to users (P7-007) |
+| `npm audit` (all) | **Before:** 15 package entries (6 moderate, 9 high) from 2 advisories (`minimatch`, `picomatch`), all in ESLint's toolchain. **After** `npm audit fix` (lockfile only): the `minimatch` advisory is resolved. **Actual output:** 14 entries, all high, 0 moderate — one advisory, `picomatch` ReDoS GHSA-fc5q-39xc-vjpf, listed once for each dependent package. No patched version exists; it is not shipped to users (P7-007) |
 | Lockfile | `npm ci` reproducible; `composer validate` passes |
 | New dependency | `@axe-core/playwright` 4.14.0 (dev only, exact pin, published 2026-10-15) |
 

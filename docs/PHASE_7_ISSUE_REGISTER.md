@@ -14,7 +14,7 @@ All P0/P1 findings are fixed and regression-tested. Commits are on `feature/phas
 | P7-004 | API responses without security headers; `X-Powered-By` leaked the PHP version | P2 | Fixed |
 | P7-005 | Web CSP without `object-src`/`frame-src`/`worker-src`; no COOP/HSTS | P3 | Fixed (`'unsafe-inline'` kept, risk accepted) |
 | P7-006 | `.env.example` explicitly set `SESSION_SECURE_COOKIE=false` | P2 | Fixed |
-| P7-007 | npm advisories in development tooling | P3 | 6 fixed, 14 documented (dev-only, no patch exists) |
+| P7-007 | npm advisories in development tooling | P3 | `minimatch` advisory fixed; `picomatch` advisory documented (14 dependent dev packages, no patch exists) |
 | P7-008 | Archived matters dominated the default matter list and the dashboard | P2 | Fixed |
 | P7-009 | Dialogs opened from state did not return keyboard focus on close (WCAG 2.4.3) | P2 | Fixed |
 | P7-010 | E-mail history split the recipient address across lines | P3 | Fixed |
@@ -101,10 +101,10 @@ Observed but not an issue:
 | | |
 | --- | --- |
 | Severity | P3 |
-| Finding | `npm audit`: 15 advisories (6 moderate, 9 high), all in ESLint's toolchain; `npm audit --omit=dev`: 0; `composer audit`: 0 |
-| Fix | `npm audit fix` (lockfile only, no major upgrades) removed the 6 moderate `typescript-eslint` advisories. The 14 remaining high ones all come from `picomatch` (ReDoS on crafted glob patterns), reached through `eslint-config-next`. The advisory covers every published version, and the "fix" npm offers is a downgrade to `eslint-config-next@14` |
+| Finding | `npm audit` before Phase 7 changes: **15 vulnerable package entries** (6 moderate, 9 high), all in ESLint's toolchain. They came from **two advisories**: a moderate `minimatch` advisory (`minimatch` plus five `typescript-eslint` packages that depend on it) and a high `picomatch` ReDoS advisory, GHSA-fc5q-39xc-vjpf (nine packages). `npm audit --omit=dev`: 0; `composer audit`: 0 |
+| Fix | `npm audit fix` (lockfile only, no major upgrades, commit `5de5c44`) updated `minimatch`, which **resolved the moderate advisory**. The five `typescript-eslint` packages are still listed, now as **high**, because they also reach `picomatch` through `tinyglobby`. The commit message says the fix "resolves the moderate typescript-eslint advisories"; more precisely, it resolved the `minimatch` advisory those packages were listed under. Actual `npm audit` output, re-checked on 2026-11-18 with the dependency state unchanged since `5de5c44`: **14 entries, 14 high, 0 moderate**, all one advisory (GHSA-fc5q-39xc-vjpf), counted once for `picomatch` and once for each of the 13 packages that depend on it (`micromatch`, `fast-glob`, `fdir`, `tinyglobby`, `@next/eslint-plugin-next`, `eslint-config-next`, `eslint-import-resolver-typescript`, `typescript-eslint`, `@typescript-eslint/{eslint-plugin, parser, type-utils, typescript-estree, utils}`). The advisory covers every published `picomatch` version, and the "fix" npm offers is a downgrade to `eslint-config-next@14` |
 | Exploitability | none at runtime: ESLint runs only on developer machines with the project's own glob patterns |
-| Status | 6 fixed, 14 documented; `verify.ps1` now audits runtime dependencies (`npm audit --omit=dev`, `composer audit`) |
+| Status | 1 of 2 advisories fixed (`minimatch`). 1 documented (`picomatch`: 14 high entries, dev-only). Runtime dependencies: 0. `verify.ps1` now audits runtime dependencies (`npm audit --omit=dev`, `composer audit`) |
 
 ### P7-008 — Archived matters crowded the working views
 

@@ -336,7 +336,8 @@ Earlier phases: [Phase 6](docs/PHASE_6_IMPLEMENTATION_REPORT.md#20-windows-verif
   exercised on a real server; see the [deployment guide](docs/DEPLOYMENT_GUIDE.md).
 - The web app's Content-Security-Policy keeps `'unsafe-inline'` for scripts, because Partial Prerendering is incompatible
   with per-request nonces ([security audit](docs/SECURITY_AUDIT.md#9-http-security-headers)).
-- `npm audit` reports high-severity `picomatch` advisories in ESLint's toolchain. They affect development tooling only;
+- `npm audit` reports 14 high-severity entries. They are one `picomatch` advisory (GHSA-fc5q-39xc-vjpf), listed once for
+  each dependent package in ESLint's toolchain. They affect development tooling only;
   runtime dependencies have none, and no patched release exists yet.
 - Locally, `php artisan serve` on Laragon runs without OPcache, so each API request takes 200–380 ms. With OPcache (required
   for production) the same requests take 21–110 ms.
