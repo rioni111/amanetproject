@@ -43,7 +43,12 @@ test("matters can be searched and filtered against the API", async ({ page }) =>
   await page.getByLabel("Search matters").fill("no-such-matter-xyz");
   await expect(page.getByText("No matters match your filters")).toBeVisible();
   await page.getByRole("button", { name: "Clear filters" }).click();
+  // Phase 7: the default view leaves out archived (read-only) matters; one filter option brings them back.
+  await expect(page.getByText(/Showing 1–9 of 9 matters/)).toBeVisible();
+  await page.getByLabel("Status").selectOption("all");
+  await expect(page).toHaveURL(/status=all/);
   await expect(page.getByText(/Showing 1–10 of 10 matters/)).toBeVisible();
+  await expect(table).toContainText("Supplier Framework Agreement");
 });
 
 test("clients can be filtered by type", async ({ page }) => {

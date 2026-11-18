@@ -90,6 +90,7 @@ const EVENT_META: Record<string, { label: string; icon: LucideIcon; tone: string
   // Phase 6: e-mail outcomes ("accepted by the mail server" — not inbox delivery).
   "email.accepted": { label: "E-mail accepted by the mail server", icon: MailCheck, tone: "text-primary bg-primary-soft" },
   "email.failed": { label: "E-mail not sent", icon: MailX, tone: "text-danger bg-danger-soft" },
+  "email.link_activated": { label: "E-mailed link opened by the client", icon: MailCheck, tone: "text-primary bg-primary-soft" },
 };
 const FALLBACK = { label: "Activity", icon: CircleDot, tone: "text-muted-foreground bg-surface-muted" };
 

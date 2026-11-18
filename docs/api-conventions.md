@@ -365,6 +365,28 @@ these endpoints (401).
   and due reminders.
 - It is scheduled every 5 minutes; run `php artisan schedule:work` in development, or `schedule:run` from cron.
 
+## Phase 7 additions
+
+- **Security headers on every API response.**
+  - `X-Content-Type-Options: nosniff` and `X-Frame-Options: DENY`.
+  - `Referrer-Policy: no-referrer`, unless a route sets its own.
+  - `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`, unless
+    a route sets its own; PDF responses keep their sandbox policy.
+  - `Cache-Control: no-store, private`, unless set deliberately.
+  - HSTS in production over HTTPS. No `X-Powered-By`.
+- **`GET /api/matters?status=current`.** Every matter except archived ones; the web app's default list view. The
+  unfiltered default (all matters) is unchanged. Other values: a status, or `active` (open, in progress, on hold).
+- **`500 { code: "email_unrecorded", message }` from the send-e-mail endpoints.** The mail server accepted the message
+  but recording the result failed.
+  - The client's link still works: it is activated when first opened (data model: `email_link_reservations`).
+  - The delivery stays `sending` until the stale-send recovery closes it as `failed / interrupted`.
+  - The correction endpoint reports the same as `email.status = "unrecorded"`.
+- **EmailDelivery `recipient_used_link_at`.** Set when the client opened the link of an e-mail whose sending had not
+  been confirmed (proof it arrived). `link` then shows the activated link, even for a delivery recorded as failed.
+- **Public upload and signing endpoints.** A token that matches no link but a pending e-mail reservation is activated
+  on first use, then handled exactly like any other link. An expired reservation answers 410 `link_expired`. Discarded
+  and superseded reservations answer like unknown tokens (404 `link_invalid`).
+
 ## Conventions for new endpoints (Phase 2+)
 
 - Route names `resource.action`, RESTful verbs, plural nouns (`/api/matters/{matter}/tasks`).

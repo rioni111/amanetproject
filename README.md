@@ -3,13 +3,18 @@
 A legal matter-management and document-signing platform built for the **Amanet Full Stack Engineer take-home assignment**.
 "Lexora Workspace" is the product identity used for the UI. All clients and matters are **fictional**.
 
-> **Status: Phase 6 of 7 complete** (merged into `main`) — real SMTP e-mail
-> delivery of document requests, corrections and signing invitations, scheduled reminders and in-app administrator
-> notifications, on top of in-house electronic PDF signing, client document requests, the PDF library with version
-> control, and matter, client, task, note and activity management. Reports: [Phase 1](docs/PHASE_1_IMPLEMENTATION_REPORT.md) ·
-> [Phase 2](docs/PHASE_2_IMPLEMENTATION_REPORT.md) · [Phase 3](docs/PHASE_3_IMPLEMENTATION_REPORT.md) ·
-> [Phase 4](docs/PHASE_4_IMPLEMENTATION_REPORT.md) · [Phase 5](docs/PHASE_5_IMPLEMENTATION_REPORT.md) ·
-> [Phase 6](docs/PHASE_6_IMPLEMENTATION_REPORT.md) · roadmap in [`docs/implementation-phases.md`](docs/implementation-phases.md).
+> **Status: all 7 phases complete.** Phase 7 (final security audit, UI/UX and accessibility, performance, QA and delivery)
+> is on branch `feature/phase-7-final-qa-delivery`, not yet merged. The final summary is the
+> [Phase 7 report](docs/PHASE_7_FINAL_IMPLEMENTATION_REPORT.md); the [documentation index](#documentation) lists every
+> document.
+
+## Reviewer quick start
+
+1. **Windows:** run `setup-windows.bat` once, then `start-windows.bat`. On other systems follow [Manual setup](#manual-setup-any-os).
+2. **Mail inbox:** start the local inbox with `docker compose up -d mailpit`. E-mails never leave the machine.
+3. **Sign in:** use the [demo account](#demo-login-development-only). The workspace already contains fictional clients,
+   matters, tasks, notes, documents with versions, client requests in every state and signed documents.
+4. **Tour:** follow the [demo walkthrough](docs/DEMO_WALKTHROUGH.md), 20–30 minutes covering every assignment requirement.
 
 ---
 
@@ -31,7 +36,33 @@ A legal matter-management and document-signing platform built for the **Amanet F
 | Data integrity | Each change and its history entry in one transaction; optimistic concurrency (409 on stale edits); append-only history; immutable document versions, client submissions and signature records; database triggers and composite keys guard request/link/signing/matter consistency |
 | UI | Responsive desktop/tablet/mobile, accessible dialogs and tabs, loading/empty/error states, success toasts, WCAG 2.2 AA-minded |
 
-Planned for the last phase: hardening and polish (7).
+**Phase 7 hardening**
+- **E-mailed links survive failures.** A link still works if the server crashes, or the database fails, after the mail
+  server accepted the message.
+- **Security headers** on every API response, and a hardened browser policy for the web app.
+- **Accessibility.** Automated WCAG A/AA checks (axe-core) and keyboard tests; dialogs return focus to the button that
+  opened them.
+- **Small screens.** The client upload and signing pages are verified at 320 px.
+- **Browsers.** Firefox and WebKit compatibility checks.
+- **Query budget.** A regression test makes sure list endpoints don't run one database query per row.
+- **Demo data.** Realistic fictional documents, requests and signatures.
+
+The findings and their fixes are in the [issue register](docs/PHASE_7_ISSUE_REGISTER.md).
+
+## Documentation
+
+| Document | Purpose |
+| --- | --- |
+| [Demo walkthrough](docs/DEMO_WALKTHROUGH.md) | step-by-step tour for reviewers |
+| [Phase 7 final report](docs/PHASE_7_FINAL_IMPLEMENTATION_REPORT.md) | requirement mapping, results, limitations, release recommendation |
+| [Final QA report](docs/FINAL_QA_REPORT.md) | test environment, results, measurements, manual acceptance |
+| [Security audit](docs/SECURITY_AUDIT.md) | threat model, controls, findings, remaining risks |
+| [Deployment guide](docs/DEPLOYMENT_GUIDE.md) | production configuration, HTTPS, SMTP, scheduler, backups, smoke tests |
+| [Delivery checklist](docs/DELIVERY_CHECKLIST.md) | handover status |
+| [Architecture](docs/architecture.md) · [Data model](docs/data-model.md) · [API conventions](docs/api-conventions.md) | technical reference |
+| [E-mail configuration](docs/email-configuration.md) · [Credentials review](docs/security-credentials.md) | operations |
+| [Audit plan](docs/PHASE_7_AUDIT_PLAN.md) · [Issue register](docs/PHASE_7_ISSUE_REGISTER.md) · [Roadmap](docs/implementation-phases.md) | Phase 7 process |
+| Phase reports [1](docs/PHASE_1_IMPLEMENTATION_REPORT.md) · [2](docs/PHASE_2_IMPLEMENTATION_REPORT.md) · [3](docs/PHASE_3_IMPLEMENTATION_REPORT.md) · [4](docs/PHASE_4_IMPLEMENTATION_REPORT.md) · [5](docs/PHASE_5_IMPLEMENTATION_REPORT.md) · [6](docs/PHASE_6_IMPLEMENTATION_REPORT.md) · [7](docs/PHASE_7_FINAL_IMPLEMENTATION_REPORT.md) | history of each delivery stage |
 
 ## Technology
 
@@ -158,8 +189,17 @@ bound to 127.0.0.1. To start only the mail containers: `docker compose up -d mai
 These demo values are committed on purpose for local development only. How to rotate them, and what must change before any
 public deployment, is described in [docs/security-credentials.md](docs/security-credentials.md).
 
+**What the demo data contains**
+- 8 clients, 10 matters (all statuses and priorities), tasks and internal notes.
+- PDFs with version history.
+- Client requests: one waiting for the client, one awaiting review, one with a correction requested, one approved.
+- An administrator-signed board resolution and a client-signed purchase agreement, with evidence.
+- A signing request ready to e-mail.
+
+All of it is created through the application's own services. Set `LEXORA_DEMO_DOCUMENTS=false` to skip the documents.
+
 Re-running `php artisan db:seed` is safe: records are keyed on natural identifiers and are never duplicated.
-To start from scratch: `php artisan migrate:fresh --seed`.
+To start from scratch: `php artisan migrate:fresh --seed`. **This erases the development database.**
 
 To create a real administrator (any environment):
 
@@ -194,10 +234,20 @@ development document storage.
 The end-to-end and SMTP integration tests need the `mailpit-e2e` container (`docker compose up -d mailpit-e2e`); they send
 real SMTP to it and click the links inside the delivered messages. `verify-windows.bat` checks that it is reachable.
 
-Latest verified results: [Phase 6 report](docs/PHASE_6_IMPLEMENTATION_REPORT.md#20-windows-verification) — 236 PHPUnit
-tests and 59 Playwright tests passed (earlier phases: [Phase 5](docs/PHASE_5_IMPLEMENTATION_REPORT.md#18-windows-verification),
+**Accessibility.** The suite runs axe-core WCAG A/AA checks (`e2e/phase7-accessibility.spec.ts`).
+
+**Other browsers (optional).** The default suite runs Chromium. To check Firefox and WebKit:
+
+```bash
+cd frontend && npx playwright install firefox webkit   # first time only
+cd frontend && set E2E_CROSS_BROWSER=1 && npx playwright test --project=firefox --project=webkit   # PowerShell: $env:E2E_CROSS_BROWSER=1
+```
+
+Latest verified results: [Final QA report](docs/FINAL_QA_REPORT.md#15-windows-verification-final). All 14
+verification steps passed: 253 PHPUnit tests (3,698 assertions) and 66 Playwright tests, plus Firefox/WebKit 2/2.
+Earlier phases: [Phase 6](docs/PHASE_6_IMPLEMENTATION_REPORT.md#20-windows-verification), [Phase 5](docs/PHASE_5_IMPLEMENTATION_REPORT.md#18-windows-verification),
 [Phase 4](docs/PHASE_4_IMPLEMENTATION_REPORT.md), [Phase 2](docs/PHASE_2_IMPLEMENTATION_REPORT.md#12-testing-results),
-[Phase 1](docs/PHASE_1_IMPLEMENTATION_REPORT.md#6-functional-verification)).
+[Phase 1](docs/PHASE_1_IMPLEMENTATION_REPORT.md#6-functional-verification).
 
 ## Troubleshooting
 
@@ -269,20 +319,27 @@ tests and 59 Playwright tests passed (earlier phases: [Phase 5](docs/PHASE_5_IMP
 ## Known limitations
 
 - The matter form's client picker and the matters client filter list the first 100 clients alphabetically (search-as-you-type picker planned).
-- Archived matters are shown in the default (unfiltered) matters list, as in Phase 1; use the status filter to narrow.
 - Uploaded PDFs are validated structurally (type, signature, completeness, no encryption) but **not scanned for malware**.
 - The viewer does not load PDF.js's optional WebAssembly decoders, so rare JPEG 2000 / JBIG2 images may not render in the
   preview (the download is unaffected).
 - E-mail status ends at **acceptance by the SMTP server**: inbox delivery, bounces and spam filtering are not tracked (no
   provider webhooks). SPF/DKIM/DMARC for a sending domain are not configured here. Sending is synchronous (bounded by
-  `MAIL_TIMEOUT`); failed e-mails are not retried automatically, and a send interrupted by a crash is reported as "interrupted"
-  (outcome unknown). See the [Phase 6 report](docs/PHASE_6_IMPLEMENTATION_REPORT.md#25-limitations).
+  `MAIL_TIMEOUT`), and failed e-mails are not retried automatically.
+- A send interrupted by a crash is still reported as "interrupted" (outcome unknown), but the client's link now works
+  if the message did arrive. See the [Phase 7 report](docs/PHASE_7_FINAL_IMPLEMENTATION_REPORT.md#26-known-limitations).
 - Signatures are application-level electronic signatures, not qualified/certificate-based signatures; no independent identity
   verification of clients (see the [Phase 5 report](docs/PHASE_5_IMPLEMENTATION_REPORT.md#23-legal-and-technical-limitations)).
 - Some PDFs cannot be signed (compressed cross-reference streams, forms, annotations, existing digital signatures, encryption).
 - Client uploads are not malware-scanned; client messages are plain text.
 - One role (`admin`) exists; the `admin` middleware and policies are in place for future roles.
-- Production deployment (HTTPS, secure cookies, production SMTP, cron) is configured through environment variables but not exercised.
-- `npm audit` reports moderate advisories in ESLint's transitive `minimatch` dependency (dev tooling only).
+- Production deployment (HTTPS, secure cookies, production SMTP, cron) is configured through environment variables but not
+  exercised on a real server; see the [deployment guide](docs/DEPLOYMENT_GUIDE.md).
+- The web app's Content-Security-Policy keeps `'unsafe-inline'` for scripts, because Partial Prerendering is incompatible
+  with per-request nonces ([security audit](docs/SECURITY_AUDIT.md#9-http-security-headers)).
+- `npm audit` reports 14 high-severity entries. They are one `picomatch` advisory (GHSA-fc5q-39xc-vjpf), listed once for
+  each dependent package in ESLint's toolchain. They affect development tooling only;
+  runtime dependencies have none, and no patched release exists yet.
+- Locally, `php artisan serve` on Laragon runs without OPcache, so each API request takes 200–380 ms. With OPcache (required
+  for production) the same requests take 21–110 ms.
 
-See the [Phase 6 report](docs/PHASE_6_IMPLEMENTATION_REPORT.md), [Phase 5 report](docs/PHASE_5_IMPLEMENTATION_REPORT.md), [Phase 4 report](docs/PHASE_4_IMPLEMENTATION_REPORT.md), [Phase 3 report](docs/PHASE_3_IMPLEMENTATION_REPORT.md), [Phase 2 report](docs/PHASE_2_IMPLEMENTATION_REPORT.md) and the [Phase 1 report](docs/PHASE_1_IMPLEMENTATION_REPORT.md) for the full list.
+See the [Phase 7 report](docs/PHASE_7_FINAL_IMPLEMENTATION_REPORT.md), [Phase 6 report](docs/PHASE_6_IMPLEMENTATION_REPORT.md), [Phase 5 report](docs/PHASE_5_IMPLEMENTATION_REPORT.md), [Phase 4 report](docs/PHASE_4_IMPLEMENTATION_REPORT.md), [Phase 3 report](docs/PHASE_3_IMPLEMENTATION_REPORT.md), [Phase 2 report](docs/PHASE_2_IMPLEMENTATION_REPORT.md) and the [Phase 1 report](docs/PHASE_1_IMPLEMENTATION_REPORT.md) for the full list.

@@ -480,6 +480,8 @@ export interface EmailDelivery {
   failure_message: string | null;
   provider_message_id: string | null;
   link?: { id: number; state: SecureLinkState; expires_at: string } | null;
+  /** Phase 7: the client opened the link of an e-mail whose sending had not been confirmed (proof it arrived). */
+  recipient_used_link_at?: string | null;
   created_by?: { id: number; name: string } | null;
   created_at: string | null;
 }

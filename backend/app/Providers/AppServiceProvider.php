@@ -21,6 +21,7 @@ use App\Services\Signing\PublicSigningLinkResolver;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
@@ -38,6 +39,14 @@ class AppServiceProvider extends ServiceProvider
     {
         // Catch N+1 queries, silently discarded attributes and missing attributes during development.
         Model::shouldBeStrict(! $this->app->isProduction());
+
+        // Phase 7: behind a TLS-terminating reverse proxy, trust its X-Forwarded-* headers — and only its own
+        // (TRUSTED_PROXIES: comma-separated addresses/CIDRs, or "*" when PHP is reachable only through the proxy).
+        // Unset (the default, local development): no forwarded header is trusted.
+        $proxies = trim((string) config('lexora.trusted_proxies'));
+        if ($proxies !== '') {
+            TrustProxies::at($proxies === '*' ? '*' : array_values(array_filter(array_map('trim', explode(',', $proxies)))));
+        }
 
         // Stable, class-name independent identifiers for polymorphic columns.
         Relation::enforceMorphMap([

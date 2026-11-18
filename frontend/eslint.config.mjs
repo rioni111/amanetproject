@@ -10,6 +10,7 @@ const eslintConfig = defineConfig([
     // Default ignores of eslint-config-next:
     ".next/**",
     ".next-e2e/**",
+    ".next-*/**", // any other build directory (NEXT_DIST_DIR), e.g. a production build made for measurements
     "out/**",
     "build/**",
     "next-env.d.ts",

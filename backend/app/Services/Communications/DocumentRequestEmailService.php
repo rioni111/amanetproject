@@ -48,9 +48,12 @@ class DocumentRequestEmailService
         $this->deliveries->assertAvailable();
         $this->deliveries->recoverStale('document_request_id', $request->id);
         $key = $automatic ? (string) $idempotencyKey : 'manual:document_request:'.$request->id.':'.($idempotencyKey ?? Str::uuid());
+        // The token exists only in memory (and, once sent, in the message); its hash is reserved with the claim.
+        $token = SecureAccessLinkService::generateToken();
+        $expiresAt = Carbon::now()->addDays($this->links->expiryDays($expiresInDays))->startOfMinute();
 
         /** @var array{0: EmailDelivery, 1: bool}|null $claim [delivery, replayed] */
-        $claim = DB::transaction(function () use ($matter, $request, $actor, $automatic, $key, $reminderSlot) {
+        $claim = DB::transaction(function () use ($matter, $request, $actor, $automatic, $key, $reminderSlot, $token, $expiresAt) {
             $matter = Matter::query()->lockForUpdate()->findOrFail($matter->getKey());
             $request = DocumentRequest::query()->whereBelongsTo($matter)->with('client:id,name,email')->lockForUpdate()->findOrFail($request->getKey());
 
@@ -96,7 +99,10 @@ class DocumentRequestEmailService
                 $this->assertCooldown($request, $type);
             }
 
-            return [$this->deliveries->claim($attributes), false];
+            $delivery = $this->deliveries->claim($attributes);
+            $this->deliveries->reserve($delivery, SecureLinkPurpose::DocumentUpload, $token, $expiresAt);
+
+            return [$delivery, false];
         });
 
         if ($claim === null) {
@@ -108,8 +114,6 @@ class DocumentRequestEmailService
         }
 
         // ---- send: token only in memory; no transaction open while talking to the SMTP server ----
-        $token = SecureAccessLinkService::generateToken();
-        $expiresAt = Carbon::now()->addDays($this->links->expiryDays($expiresInDays))->startOfMinute();
         $request->loadMissing('client:id,name,email');
         $content = $this->composer->documentRequest($delivery->communication_type, $request, $delivery->recipient_name,
             $this->links->uploadUrl($token), $expiresAt, $reminderSlot);
@@ -123,9 +127,12 @@ class DocumentRequestEmailService
         }
 
         // ---- finish: register the delivered link (hash only) and record the outcome, atomically ----
-        return DB::transaction(function () use ($matter, $request, $actor, $delivery, $outcome, &$token, $expiresAt) {
+        return $this->deliveries->finishAccepted($delivery, function () use ($matter, $request, $actor, $delivery, $outcome, &$token, $expiresAt) {
             $matter = Matter::query()->lockForUpdate()->findOrFail($matter->getKey());
             $request = DocumentRequest::query()->whereBelongsTo($matter)->with('client:id,name')->lockForUpdate()->findOrFail($request->getKey());
+            if (($done = $this->deliveries->finishedOnFirstUse($delivery)) !== null) {
+                return $done; // the client already used the link (activated on first use)
+            }
             // The request may have closed while the message was being sent: the link is then stored already
             // revoked (the client sees why), never usable.
             $closed = match (true) {

@@ -49,8 +49,12 @@ class SigningEmailService
         $this->deliveries->assertAvailable();
         $this->deliveries->recoverStale('signing_request_id', $request->id);
         $key = $automatic ? (string) $idempotencyKey : 'manual:signing_request:'.$request->id.':'.($idempotencyKey ?? Str::uuid());
+        // The token exists only in memory (and, once sent, in the message); its hash is reserved with the claim.
+        $token = SecureAccessLinkService::generateToken();
+        $days = $this->links->expiryDays($expiresInDays ?? (int) config('lexora.signing.link_expiry_days', 7));
+        $expiresAt = Carbon::now()->addDays($days)->startOfMinute();
 
-        $claim = DB::transaction(function () use ($matter, $request, $actor, $automatic, $key, $reminderSlot) {
+        $claim = DB::transaction(function () use ($matter, $request, $actor, $automatic, $key, $reminderSlot, $token, $expiresAt) {
             $matter = Matter::query()->lockForUpdate()->findOrFail($matter->getKey());
             $request = SigningRequest::query()->whereBelongsTo($matter)->lockForUpdate()->findOrFail($request->getKey());
 
@@ -101,7 +105,10 @@ class SigningEmailService
                 }
             }
 
-            return [$this->deliveries->claim($attributes), false];
+            $delivery = $this->deliveries->claim($attributes);
+            $this->deliveries->reserve($delivery, SecureLinkPurpose::DocumentSigning, $token, $expiresAt);
+
+            return [$delivery, false];
         });
 
         if ($claim === null) {
@@ -112,9 +119,6 @@ class SigningEmailService
             return $delivery;
         }
 
-        $token = SecureAccessLinkService::generateToken();
-        $days = $this->links->expiryDays($expiresInDays ?? (int) config('lexora.signing.link_expiry_days', 7));
-        $expiresAt = Carbon::now()->addDays($days)->startOfMinute();
         $documentTitle = (string) $request->document()->value('title');
         $content = $this->composer->signing($delivery->communication_type, $request, $documentTitle, $this->links->signingUrl($token), $expiresAt);
         $outcome = $this->deliveries->send($delivery, new ClientActionMail($content, $delivery->uuid, $automatic));
@@ -126,9 +130,12 @@ class SigningEmailService
             return $this->deliveries->markFailed($delivery, $outcome->failure, $matter, $actor, $automatic, $delivery->communication_type->label());
         }
 
-        return DB::transaction(function () use ($matter, $request, $actor, $delivery, $outcome, &$token, $expiresAt, $documentTitle) {
+        return $this->deliveries->finishAccepted($delivery, function () use ($matter, $request, $actor, $delivery, $outcome, &$token, $expiresAt, $documentTitle) {
             $matter = Matter::query()->lockForUpdate()->findOrFail($matter->getKey());
             $request = SigningRequest::query()->whereBelongsTo($matter)->lockForUpdate()->findOrFail($request->getKey());
+            if (($done = $this->deliveries->finishedOnFirstUse($delivery)) !== null) {
+                return $done; // the signer already used the link (activated on first use)
+            }
             $closed = match (true) {
                 $matter->isArchived() => LinkRevocationReason::MatterArchived,
                 ! $request->status->isActive() => LinkRevocationReason::RequestCancelled, // signed or cancelled meanwhile

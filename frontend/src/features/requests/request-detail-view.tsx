@@ -504,6 +504,7 @@ function CorrectionDialog({
         if (result.email) {
           // The decision is recorded either way; the e-mail outcome is reported honestly.
           if (result.email.status === "accepted") toast.success("Correction requested", result.email.message);
+          else if (result.email.status === "unrecorded") toast.error("Correction requested — e-mail result not recorded", result.email.message);
           else toast.error("Correction requested — e-mail not sent", result.email.message);
           onOpenChange(false);
         } else if (result.link) onIssued(result.link);

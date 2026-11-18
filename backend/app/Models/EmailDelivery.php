@@ -8,6 +8,7 @@ use App\Enums\EmailFailureCategory;
 use App\Enums\EmailTrigger;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * One e-mail (and its attempt history). An audit record: never deleted, target and recipient never change,
@@ -54,5 +55,11 @@ class EmailDelivery extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /** Phase 7: the reserved hash of the token this e-mail carried (no token, no URL). */
+    public function reservation(): HasOne
+    {
+        return $this->hasOne(EmailLinkReservation::class);
     }
 }

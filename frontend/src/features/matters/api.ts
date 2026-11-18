@@ -11,7 +11,8 @@ export type DeadlineFilter = "" | "overdue" | "upcoming" | "none";
 
 export interface MatterFilters {
   search: string;
-  status: MatterStatus | "active" | "";
+  /** "" = every matter except archived ones (the default view); "all" includes archived matters. */
+  status: MatterStatus | "active" | "all" | "";
   priority: Priority | "";
   deadline: DeadlineFilter;
   client_id: number | "";
@@ -47,7 +48,7 @@ export function useMatters(filters: MatterFilters, perPage = 10) {
         "/api/matters",
         {
           search: filters.search,
-          status: filters.status,
+          status: filters.status === "" ? "current" : filters.status === "all" ? "" : filters.status,
           priority: filters.priority,
           deadline: filters.deadline,
           client_id: filters.client_id,

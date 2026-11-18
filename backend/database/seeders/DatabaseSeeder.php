@@ -22,5 +22,8 @@ class DatabaseSeeder extends Seeder
             DemoAdminSeeder::class,
             DemoWorkspaceSeeder::class,
         ]);
+        if (config('lexora.demo_documents')) {
+            $this->call(DemoDocumentsSeeder::class);
+        }
     }
 }

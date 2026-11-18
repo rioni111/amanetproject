@@ -23,6 +23,16 @@ enum EmailFailureCategory: string
     case Ineligible = 'ineligible';                 // the request no longer needs this action (signed, cancelled, …)
     case ReminderLimit = 'reminder_limit';          // the automatic-reminder cap for the request was reached
 
+    /**
+     * The server explicitly refused the message (or it was never handed over), so its link can never have
+     * reached anyone. Connection drops, timeouts, interruptions and unknown errors are NOT certain: the server
+     * may have accepted the message before the answer was lost.
+     */
+    public function definitelyNotDelivered(): bool
+    {
+        return in_array($this, [self::Authentication, self::RecipientRejected, self::SenderRejected, self::Configuration, self::InvalidRecipient], true);
+    }
+
     public function label(): string
     {
         return match ($this) {

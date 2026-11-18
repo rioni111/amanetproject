@@ -75,4 +75,7 @@ enum ActivityEventType: string
     // never the action link, its token or token hash, SMTP credentials or the message body.
     case EmailAccepted = 'email.accepted';                       // the SMTP server accepted the message
     case EmailFailed = 'email.failed';                           // the attempt failed (safe category recorded)
+    // Phase 7: the recipient used the link of an e-mail whose sending was not confirmed (process stopped or the
+    // server's answer was lost) — possession of the token proves the message arrived; the link was activated then.
+    case EmailLinkActivated = 'email.link_activated';
 }

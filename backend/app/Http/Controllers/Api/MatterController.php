@@ -46,9 +46,11 @@ class MatterController extends Controller
                         ->orWhereHas('client', fn (Builder $c) => $c->whereLike('name', $term)->orWhereLike('reference_number', $term));
                 });
             })
-            ->when($filters['status'] ?? null, fn (Builder $q, string $status) => $status === 'active'
-                ? $q->whereIn('status', MatterStatus::activeValues())
-                : $q->where('status', $status))
+            ->when($filters['status'] ?? null, fn (Builder $q, string $status) => match ($status) {
+                'active' => $q->whereIn('status', MatterStatus::activeValues()),
+                'current' => $q->where('status', '<>', MatterStatus::Archived->value),
+                default => $q->where('status', $status),
+            })
             ->when($filters['priority'] ?? null, fn (Builder $q, string $priority) => $q->where('priority', $priority))
             ->when($filters['client_id'] ?? null, fn (Builder $q, int|string $clientId) => $q->where('client_id', (int) $clientId))
             ->when($filters['matter_type'] ?? null, fn (Builder $q, string $type) => $q->where('matter_type', $type))

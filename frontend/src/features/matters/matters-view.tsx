@@ -17,7 +17,7 @@ import { Select } from "@/components/ui/select";
 import { useUrlFilters } from "@/hooks/use-url-filters";
 import { cn } from "@/lib/utils/cn";
 import { MATTER_STATUS_LABELS, PRIORITY_LABELS } from "@/lib/utils/labels";
-import { MATTER_STATUSES, PRIORITIES, type MatterStatus, type Priority } from "@/types/api";
+import { MATTER_STATUSES, PRIORITIES, type Priority } from "@/types/api";
 
 import { useClientOptions } from "@/features/clients/api";
 
@@ -53,7 +53,7 @@ function parseFilters(params: URLSearchParams): MatterFilters {
 
   return {
     search: (params.get("search") ?? "").slice(0, 100),
-    status: status === "active" || (MATTER_STATUSES as readonly string[]).includes(status) ? (status as MatterStatus | "active") : "",
+    status: status === "active" || status === "all" || (MATTER_STATUSES as readonly string[]).includes(status) ? (status as MatterFilters["status"]) : "",
     priority: (PRIORITIES as readonly string[]).includes(priority) ? (priority as Priority) : "",
     deadline: DEADLINE_OPTIONS.some((option) => option.value === deadline) ? (deadline as DeadlineFilter) : "",
     client_id: Number.isFinite(clientId) && clientId > 0 ? clientId : "",
@@ -120,8 +120,9 @@ export function MattersView() {
               value={filters.status}
               onChange={(e) => setFilters({ status: e.target.value as MatterFilters["status"] })}
             >
-              <option value="">All statuses</option>
+              <option value="">All except archived</option>
               <option value="active">Active (open, in progress, on hold)</option>
+              <option value="all">All, including archived</option>
               {MATTER_STATUSES.map((status) => (
                 <option key={status} value={status}>
                   {MATTER_STATUS_LABELS[status]}

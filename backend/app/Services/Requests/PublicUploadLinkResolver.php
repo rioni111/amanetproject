@@ -7,6 +7,7 @@ use App\Enums\SecureLinkPurpose;
 use App\Models\DocumentRequest;
 use App\Models\Matter;
 use App\Models\SecureAccessLink;
+use App\Services\Communications\EmailLinkActivationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\RateLimiter;
@@ -27,6 +28,8 @@ class PublicUploadLinkResolver
 
     private const LOCKOUT_SECONDS = 900;
 
+    public function __construct(private readonly EmailLinkActivationService $activation) {}
+
     public function resolve(Request $request): SecureAccessLink
     {
         $limiterKey = 'public-link-invalid:'.$request->ip();
@@ -35,13 +38,17 @@ class PublicUploadLinkResolver
         }
 
         $token = (string) $request->header(self::HEADER, '');
-        $link = SecureAccessLinkService::isWellFormed($token)
-            ? SecureAccessLink::query()
-                ->where('token_hash', SecureAccessLinkService::hashToken($token))
-                ->where('purpose', SecureLinkPurpose::DocumentUpload->value)
-                ->with(['documentRequest.matter', 'documentRequest.client:id,name'])
-                ->first()
-            : null;
+        $find = fn () => SecureAccessLink::query()
+            ->where('token_hash', SecureAccessLinkService::hashToken($token))
+            ->where('purpose', SecureLinkPurpose::DocumentUpload->value)
+            ->with(['documentRequest.matter', 'documentRequest.client:id,name'])
+            ->first();
+        $link = SecureAccessLinkService::isWellFormed($token) ? $find() : null;
+        // Phase 7: the token of an e-mail whose sending was never confirmed is activated on first use.
+        if ($link === null && SecureAccessLinkService::isWellFormed($token)
+            && $this->activation->activate($token, SecureLinkPurpose::DocumentUpload) !== null) {
+            $link = $find();
+        }
 
         if ($link === null || ! hash_equals($link->token_hash, SecureAccessLinkService::hashToken($token))) {
             RateLimiter::hit($limiterKey, self::LOCKOUT_SECONDS);

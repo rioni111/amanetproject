@@ -79,7 +79,7 @@ export function DocumentsLibraryView() {
   const clients = useClientOptions();
   const matterFilters: MatterFilters = {
     search: "",
-    status: "",
+    status: "all", // the library also holds documents of archived matters
     priority: "",
     deadline: "",
     client_id: "",

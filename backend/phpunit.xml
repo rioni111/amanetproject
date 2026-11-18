@@ -34,6 +34,7 @@
         <env name="LEXORA_TIMEZONE" value="UTC"/>
         <env name="DEMO_ADMIN_EMAIL" value="admin@lexora.test"/>
         <env name="DEMO_ADMIN_PASSWORD" value="Test-Password-123"/>
+        <env name="LEXORA_DEMO_DOCUMENTS" value="false"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

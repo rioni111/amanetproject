@@ -284,6 +284,7 @@ DocumentRequestEmailService / SigningEmailService
   1 CLAIM   transaction: lock matter → request; same idempotency key → return the first result; eligibility; recipient
             derived by the server (client e-mail / signer snapshot); cooldown (same type, 60 s); one 'sending' row per
             request (partial unique index) → email_deliveries(status = sending)
+            + (Phase 7) the token's SHA-256 reserved in email_link_reservations (never the token)
   2 SEND    no transaction: token = random_bytes(32) in memory → ClientActionMail (HTML + text) → Laravel Mail → SMTP,
             bounded by MAIL_TIMEOUT; SendOutcome = accepted (+ server "queued as" id) | failed (safe category)
   3a ACCEPT transaction: lock matter → request → delivery; SecureAccessLinkService::registerDeliveredLink (SHA-256 only;
@@ -299,8 +300,13 @@ Next.js: SendEmailDialog · CommunicationHistory · NotificationBell (30 s unrea
 ```
 
 - **No queue, no stored token.** Approach "synchronous send after commit": the token exists only in PHP memory and inside the
-  message, so it can never appear in a job payload, table or log. Its hash is stored only once the SMTP server accepted the
+  message, so it can never appear in a job payload, table or log. Its hash becomes a link only once the SMTP server accepted the
   message, so a failed send can never create a working link the client did not receive, and never revokes the link they have.
+- **Activation on first use (Phase 7, P7-001).** The hash is *reserved* in the claim transaction (`email_link_reservations`,
+  not a link). If the process stops after acceptance, the finish transaction fails, or the outcome was ambiguous (timeout),
+  the client presenting the token proves the e-mail arrived: `EmailLinkActivationService` registers the link then, under the
+  same locks and rules as a normal acceptance, and records `email.link_activated`. Definite refusals discard the reservation;
+  any newer link supersedes it. A finish failure answers `500 email_unrecorded` with an honest message.
 - **Honest outcomes.** Statuses `sending`, `accepted`, `failed` (incl. `interrupted` = outcome unknown after a crash), `skipped`.
   "Accepted" means the configured SMTP server took the message — never "delivered". HTTP: 201 accepted, 200 replay, 502
   `email_failed`, 503 `email_unavailable`, 409 not allowed now; the frontend shows the server's text for the two e-mail codes

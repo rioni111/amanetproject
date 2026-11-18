@@ -13,6 +13,7 @@ use App\Models\DocumentRequest;
 use App\Models\Matter;
 use App\Models\SecureAccessLink;
 use App\Services\Communications\DocumentRequestEmailService;
+use App\Services\Communications\EmailUnrecordedException;
 use App\Services\Requests\DocumentRequestService;
 use App\Services\Requests\DocumentReviewService;
 use App\Services\Requests\IssuedLink;
@@ -93,11 +94,13 @@ class DocumentRequestWorkflowController extends Controller
             $delivery = $emails->send($matter, $documentRequest, $request->user(), null, $request->validated('expires_in_days'));
             $email = [
                 'status' => $delivery->status->value,
-                'delivery' => new EmailDeliveryResource($delivery->loadMissing(['link', 'creator:id,name'])),
+                'delivery' => new EmailDeliveryResource($delivery->loadMissing(['link', 'creator:id,name', 'reservation.link'])),
                 'message' => $delivery->status === EmailDeliveryStatus::Accepted
                     ? 'Correction e-mail accepted by the configured mail server.'
                     : 'Correction requested, but the e-mail could not be sent. No successful delivery has been recorded. '.$delivery->failure_category?->label(),
             ];
+        } catch (EmailUnrecordedException $e) {
+            $email = ['status' => 'unrecorded', 'delivery' => null, 'message' => 'Correction requested. '.$e->getMessage()];
         } catch (HttpExceptionInterface $e) {
             $email = ['status' => 'not_sent', 'delivery' => null,
                 'message' => 'Correction requested, but no e-mail was sent: '.$e->getMessage().' Send it again or generate a link to copy.'];

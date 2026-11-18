@@ -5,12 +5,15 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils/cn";
 
+import { useReturnFocus } from "./use-return-focus";
+
 const AlertDialog = AlertDialogPrimitive.Root;
 const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
 const AlertDialogAction = AlertDialogPrimitive.Action;
 const AlertDialogCancel = AlertDialogPrimitive.Cancel;
 
-function AlertDialogContent({ className, ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+function AlertDialogContent({ className, onOpenAutoFocus, onCloseAutoFocus, ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+  const focusHandlers = useReturnFocus(onOpenAutoFocus, onCloseAutoFocus);
   return (
     <AlertDialogPrimitive.Portal>
       <AlertDialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[#111827]/45 backdrop-blur-[2px]" />
@@ -20,6 +23,7 @@ function AlertDialogContent({ className, ...props }: React.ComponentProps<typeof
           className,
         )}
         {...props}
+        {...focusHandlers}
       />
     </AlertDialogPrimitive.Portal>
   );

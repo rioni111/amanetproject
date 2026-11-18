@@ -6,6 +6,8 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils/cn";
 
+import { useReturnFocus } from "./use-return-focus";
+
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
 const DialogClose = DialogPrimitive.Close;
@@ -19,8 +21,11 @@ function DialogContent({
   children,
   title,
   description,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & { title: React.ReactNode; description?: React.ReactNode }) {
+  const focusHandlers = useReturnFocus(onOpenAutoFocus, onCloseAutoFocus);
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[#111827]/45 backdrop-blur-[2px]" />
@@ -32,6 +37,7 @@ function DialogContent({
         )}
         {...(description ? {} : { "aria-describedby": undefined })}
         {...props}
+        {...focusHandlers}
       >
         <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
           <div className="min-w-0">

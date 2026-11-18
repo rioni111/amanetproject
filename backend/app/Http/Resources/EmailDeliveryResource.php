@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\EmailLinkReservationStatus;
 use App\Models\EmailDelivery;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -38,7 +39,17 @@ class EmailDeliveryResource extends JsonResource
             'failure_category' => $this->failure_category?->value,
             'failure_message' => $this->failure_category?->label(),
             'provider_message_id' => $this->provider_message_id,
-            'link' => $this->whenLoaded('link', fn () => $this->link ? ['id' => $this->link->id, 'state' => $this->link->state()->value, 'expires_at' => $this->link->expires_at->toIso8601String()] : null),
+            // when(), not whenLoaded(): whenLoaded() answers null for a null relation without calling back.
+            'link' => $this->when($this->resource->relationLoaded('link'), function () {
+                // Phase 7: a send whose outcome was unknown has no link of its own until the recipient used it.
+                $link = $this->link ?? ($this->relationLoaded('reservation') ? $this->reservation?->link : null);
+
+                return $link ? ['id' => $link->id, 'state' => $link->state()->value, 'expires_at' => $link->expires_at->toIso8601String()] : null;
+            }),
+            // Set when the recipient opened the link of an e-mail whose sending had not been confirmed: proof the
+            // message arrived (the link was activated then).
+            'recipient_used_link_at' => $this->whenLoaded('reservation', fn () => $this->reservation?->status === EmailLinkReservationStatus::Activated
+                ? $this->reservation->resolved_at?->toIso8601String() : null),
             'created_by' => $this->whenLoaded('creator', fn () => $this->creator ? ['id' => $this->creator->id, 'name' => $this->creator->name] : null),
             'created_at' => $this->created_at?->toIso8601String(),
         ];

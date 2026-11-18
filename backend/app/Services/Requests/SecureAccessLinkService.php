@@ -2,9 +2,11 @@
 
 namespace App\Services\Requests;
 
+use App\Enums\EmailLinkReservationStatus;
 use App\Enums\LinkRevocationReason;
 use App\Enums\SecureLinkPurpose;
 use App\Models\DocumentRequest;
+use App\Models\EmailLinkReservation;
 use App\Models\Matter;
 use App\Models\SecureAccessLink;
 use App\Models\SigningRequest;
@@ -156,6 +158,14 @@ class SecureAccessLinkService
             'successful_uses' => 0,
             'created_by' => $actor?->id, // null: issued by the reminder scheduler
         ])->save();
+
+        // Phase 7: the newest link for a request always wins. E-mails whose sending was never confirmed
+        // (pending reservations) can no longer be activated once any other link was issued for the request.
+        EmailLinkReservation::query()
+            ->where(isset($target['document_request_id']) ? 'document_request_id' : 'signing_request_id', reset($target))
+            ->where('status', EmailLinkReservationStatus::Pending->value)
+            ->where('token_hash', '<>', $link->token_hash)
+            ->update(['status' => EmailLinkReservationStatus::Superseded->value, 'resolved_at' => Carbon::now(), 'updated_at' => Carbon::now()]);
 
         return [$link, $token];
     }

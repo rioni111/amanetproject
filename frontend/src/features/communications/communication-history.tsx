@@ -59,8 +59,8 @@ export function CommunicationHistory({ target, matterId, id }: { target: EmailTa
                       <span className="rounded bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">automatic</span>
                     ) : null}
                   </p>
-                  <p className="text-xs break-all text-muted-foreground">
-                    To {d.recipient_name} &lt;{d.recipient_email}&gt;
+                  <p className="text-xs break-words text-muted-foreground">
+                    To {d.recipient_name} <span className="break-all whitespace-normal">&lt;{d.recipient_email}&gt;</span>
                     {d.created_by ? ` · by ${d.created_by.name}` : d.initiated_by === "automatic" ? " · by the reminder schedule" : ""}
                     {d.last_attempt_at ? ` · ${formatDateTime(d.last_attempt_at)}` : ""}
                   </p>
@@ -68,6 +68,11 @@ export function CommunicationHistory({ target, matterId, id }: { target: EmailTa
                     <Icon aria-hidden className={`mt-px size-3.5 shrink-0 ${d.status === "sending" ? "animate-spin" : ""}`} />
                     <span>{s.text}</span>
                   </p>
+                  {d.recipient_used_link_at ? (
+                    <p className="text-[11px] text-subtle-foreground" data-testid="recipient-used-link">
+                      The client opened the link from this e-mail on {formatDateTime(d.recipient_used_link_at)}, so it did arrive.
+                    </p>
+                  ) : null}
                   {d.link ? (
                     <p className="text-[11px] text-subtle-foreground">
                       Link in this e-mail: {d.link.state}
