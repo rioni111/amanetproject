@@ -10,7 +10,7 @@ Seven-day delivery plan. ✅ = implemented and verified · 🟡 = foundation onl
 | 4 | Secure Client Document Requests & Review | ✅ Complete ([report](PHASE_4_IMPLEMENTATION_REPORT.md)) |
 | 5 | Electronic Document Signing | ✅ Complete, merged into `main` ([report](PHASE_5_IMPLEMENTATION_REPORT.md)) |
 | 6 | Email, Notifications, Signing Progress & Activity | ✅ Complete, merged into `main` ([report](PHASE_6_IMPLEMENTATION_REPORT.md)) |
-| 7 | Testing, Security Hardening, UI Polish & Delivery | ✅ Complete on `feature/phase-7-final-qa-delivery`, not merged ([report](PHASE_7_FINAL_IMPLEMENTATION_REPORT.md)) |
+| 7 | Testing, Security Hardening, UI Polish & Delivery | ✅ Complete, merged into `main` ([report](PHASE_7_FINAL_IMPLEMENTATION_REPORT.md)) |
 
 ## 1. Foundation, Architecture, Database, Authentication & UI — ✅
 

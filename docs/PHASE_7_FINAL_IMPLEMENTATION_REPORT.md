@@ -1,7 +1,8 @@
 # Phase 7 Final Implementation Report — Security, Quality, UI/UX and Delivery
 
-Branch `feature/phase-7-final-qa-delivery`, created from `main` at `e770e27` (Phases 1–6). It is **not merged and not
-pushed**, pending authorisation. All data used is **fictional**.
+Branch `feature/phase-7-final-qa-delivery`, created from `main` at `e770e27` (Phases 1–6). After explicit authorisation
+it was merged into `main` (merge commit `9c80183`) and pushed to the private repository, together with the feature
+branch. All data used is **fictional**.
 
 Companion documents:
 - [audit plan](PHASE_7_AUDIT_PLAN.md);
@@ -499,15 +500,26 @@ All of it is in [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
   | `6d9aacf` | Phase 7: final regression tests, accessibility, cross-browser and verification steps |
   | `687dd89` | Phase 7: a dropped SMTP connection is always reported as "could not be reached" (P7-014) |
   | `5227473` | Phase 7: trust only the configured reverse proxy (TRUSTED_PROXIES) (**code verified by the final run**) |
-  | *(next)* | Phase 7 documentation, final reports and handover — documentation only |
+  | `d010682` | Phase 7 documentation, final reports and handover — documentation only |
+  | `44d0344` | Reconcile the npm audit advisory counts with the actual audit output — documentation only |
 
-- **HEAD** is the documentation commit on top of `5227473`. Its hash is given in the final response, because a commit
-  cannot contain its own hash. All executable code at HEAD equals `5227473`.
-- **Working tree:** clean after the documentation commit.
+- **Feature branch head:** `44d0344`. All executable code there equals `5227473`.
+- **Working tree:** clean.
 - **Not committed (gitignored):** `.env`, verification logs, test results, build directories, Mailpit data, screenshots
   and measurement scripts (kept in a temporary folder).
-- **Merge and push status:** not merged into `main` and not pushed, pending explicit authorisation. The repository
-  stays private.
+- **Merge status:**
+  - At report time, the branch was neither merged nor pushed.
+  - After the user's explicit authorisation ("Merge and push"), it was merged with `--no-ff` into `main` as `9c80183`,
+    with parents `e770e27` and `44d0344`. The merge was clean because `main` had not moved since `e770e27`.
+  - The merged tree is identical to `44d0344`, so the final verification at `5227473` (code) applies to it unchanged; no
+    test run was repeated for the documentation-only and Git-only changes.
+  - The merge is recorded on `main` in a following documentation commit.
+- **Push status:**
+  - `main` and `feature/phase-7-final-qa-delivery` were pushed to the private `origin` with normal pushes, never
+    forced. The feature branch was kept.
+  - The first push attempt was postponed: this machine's DNS was failing for every host. Nothing was changed to work
+    around it.
+  - The repository stays private.
 
 ## 26. Known Limitations
 

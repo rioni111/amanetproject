@@ -4,7 +4,7 @@ A legal matter-management and document-signing platform built for the **Amanet F
 "Lexora Workspace" is the product identity used for the UI. All clients and matters are **fictional**.
 
 > **Status: all 7 phases complete.** Phase 7 (final security audit, UI/UX and accessibility, performance, QA and delivery)
-> is on branch `feature/phase-7-final-qa-delivery`, not yet merged. The final summary is the
+> is merged into `main` (merge commit `9c80183`). The final summary is the
 > [Phase 7 report](docs/PHASE_7_FINAL_IMPLEMENTATION_REPORT.md); the [documentation index](#documentation) lists every
 > document.
 

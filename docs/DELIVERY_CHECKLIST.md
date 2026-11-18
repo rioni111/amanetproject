@@ -6,7 +6,7 @@ Status at the end of Phase 7. "✅" means done and verified (evidence linked); "
 | # | Item | Status | Evidence / note |
 | --- | --- | --- | --- |
 | 1 | Private repository available to the authorised reviewer | ⏳ | `github.com/rioni111/amanetproject` is **private**; the owner grants reviewer access on GitHub. Visibility was not changed |
-| 2 | Correct branch identified | ⏳ | Phases 1–6 are on `main` (`e770e27`). Phase 7 is on `feature/phase-7-final-qa-delivery`, **not merged, not pushed**, waiting for authorisation |
+| 2 | Correct branch identified | ✅ | `main` contains all 7 phases: Phase 7 is merged as `9c80183` and pushed. The feature branch `feature/phase-7-final-qa-delivery` is kept |
 | 3 | Source code complete | ✅ | backend (Laravel 12), frontend (Next.js 16), scripts, Docker Compose |
 | 4 | Installation documented | ✅ | [README](../README.md) (Windows one-click and manual), [DEPLOYMENT_GUIDE](DEPLOYMENT_GUIDE.md) |
 | 5 | Environment templates provided | ✅ | `backend/.env.example`, `frontend/.env.example` (no operational secrets) |
