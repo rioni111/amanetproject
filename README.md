@@ -264,8 +264,10 @@ cd frontend && npx playwright install firefox webkit   # first time only
 cd frontend && set E2E_CROSS_BROWSER=1 && npx playwright test --project=firefox --project=webkit   # PowerShell: $env:E2E_CROSS_BROWSER=1
 ```
 
-Latest verified results: [Final QA report](docs/FINAL_QA_REPORT.md#15-windows-verification-final). All 14
-verification steps passed: 253 PHPUnit tests (3,698 assertions) and 66 Playwright tests, plus Firefox/WebKit 2/2.
+Latest verified results (2026-11-18, `verify-windows.bat`, 13 steps — the two steps that wrote to the development
+database were replaced by a read-only `migrate:status`): **13/13 passed**, with 253 PHPUnit tests (3,698 assertions)
+and 66 Playwright tests. Phase 7 results with the earlier 14-step pipeline, plus Firefox/WebKit 2/2:
+[Final QA report](docs/FINAL_QA_REPORT.md#15-windows-verification-final).
 Earlier phases: [Phase 6](docs/PHASE_6_IMPLEMENTATION_REPORT.md#20-windows-verification), [Phase 5](docs/PHASE_5_IMPLEMENTATION_REPORT.md#18-windows-verification),
 [Phase 4](docs/PHASE_4_IMPLEMENTATION_REPORT.md), [Phase 2](docs/PHASE_2_IMPLEMENTATION_REPORT.md#12-testing-results),
 [Phase 1](docs/PHASE_1_IMPLEMENTATION_REPORT.md#6-functional-verification).
