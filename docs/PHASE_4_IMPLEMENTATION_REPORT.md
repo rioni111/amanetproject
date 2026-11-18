@@ -350,8 +350,14 @@ present, clean tree). Commits:
 
 Not committed (gitignored or never created in the repository): `.env` files, `vendor/`, `node_modules/`, `verification-logs/`,
 private PDF storage (`backend/storage/app/private/*`), Playwright artefacts (`test-results/`, `playwright-report/`,
-`e2e/.auth/`), `.next*`. No plaintext tokens anywhere. No remote is configured; nothing was pushed. **Not merged into `main`**
-(awaiting authorisation).
+`e2e/.auth/`), `.next*`. No plaintext tokens anywhere.
+
+**Merge status at report time:** no remote was configured, nothing had been pushed, and the branch was not yet merged into
+`main` (awaiting authorisation).
+
+**Later:** after explicit authorisation, the branch was merged into `main` with `--no-ff` as `8443455` (parents `9e9e530`
+and `748cf23`). `main` and `feature/phase-4-client-document-requests` were then pushed to the private repository. All
+seven phases are now on `main`; see [implementation-phases.md](implementation-phases.md).
 
 ## 19. Phase 5 readiness
 
