@@ -34,7 +34,7 @@ class SmtpIntegrationTest extends TestCase
         try {
             Http::timeout(3)->get($this->e2eMailpitApi().'/info')->throw();
         } catch (\Throwable) {
-            $this->fail('The E2E Mailpit is not reachable at '.$this->e2eMailpitApi().'. Start it: docker compose up -d --pull never mailpit-e2e');
+            $this->fail('The E2E Mailpit is not reachable at '.$this->e2eMailpitApi().'. Start Docker Desktop, then: docker compose up -d mailpit-e2e');
         }
         $this->useE2eMailpit();
         config(['mail.from.address' => 'workspace@lexora.test', 'mail.from.name' => 'Lexora Workspace',

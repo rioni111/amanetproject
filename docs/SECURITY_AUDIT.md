@@ -28,7 +28,7 @@ Findings referenced as `P7-xxx` are detailed in the [issue register](PHASE_7_ISS
 | --- | --- | --- |
 | Client PDFs (originals, uploads, signed) | unauthorised download, cross-matter access, public exposure | private disk outside `public/`; admin-only API with scoped bindings (matter → document → version); SHA-256 checked on read |
 | Secure links (upload / signing) | guessing, leakage, reuse, wrong purpose, resurrection | 256-bit CSPRNG tokens; SHA-256 stored only; purpose-scoped resolvers; expiry, one use, revocation, rotation; fragment + header transport; IP lockout |
-| Signed documents and evidence | forgery, alteration, wrong document or signer | one signer per PDF (DB constraints); pinned immutable source version; immutable signed version and evidence (triggers); server time; consent versioned |
+| Signed documents and evidence | forgery, alteration, wrong document or signer | one signer per PDF (a partial unique index allows one active request per document; the service enforces the rest); pinned immutable source version; immutable signed version and evidence (triggers); server time; consent versioned |
 | Administrator session | theft, CSRF, brute force | HTTP-only cookie, `SameSite=Lax`, `Secure` in production; CSRF on stateful API; login rate limit; session regeneration |
 | E-mail | arbitrary recipients, header injection, spoofed success, token leakage | server-chosen recipients (payload fields prohibited); address validation and DB CHECK; status only from the transport; no queue, no stored token |
 | Notifications and internal notes | cross-user or public access | per-user relation (404 otherwise); notes only on admin routes; tokens rejected (401) |
@@ -96,7 +96,7 @@ responses contain no matter number, title, client name or administrator name.
 | One use | consumed in the submission/signature transaction; partial unique index = one usable link per request | Phase 4/5 race tests |
 | Rate limiting | per-IP view/submit limits, 20 failed lookups → 15-minute lockout | Phase 4/5 tests |
 | Transport | URL fragment (never sent to a server) + `X-Upload-Token`/`X-Signing-Token` header; `Referrer-Policy: no-referrer`, `no-store`, `noindex` | Phase 4 tests, live headers |
-| Logs / activity / e-mail records | no token or URL anywhere; hash never outside link tables | `CommunicationSecurityTest` (table and log scans) |
+| Logs / activity / e-mail records | no token or URL anywhere; hash never outside link tables (with `MAIL_MAILER=smtp` as in `.env.example`; Laravel's `log` mailer, the default when `MAIL_MAILER` is unset, would write e-mail bodies including links to the log) | `CommunicationSecurityTest` (table and log scans) |
 | Crash window (Phase 6 §16) | **fixed** — reservation + activation on first use (P7-001) | `EmailLinkRecoveryTest` |
 
 **Residual risk.** A link is a bearer credential. Anyone who has a forwarded e-mail can use it until it is used,
@@ -214,8 +214,16 @@ Scan of all tracked files:
 - no `APP_KEY` value, private keys or token-shaped links;
 - no PDFs, storage files or verification logs.
 
-The only password values are the documented local Docker default (`DB_PASSWORD=amanet` in `.env.example`) and
-`null` placeholders.
+Password values in tracked files are all documented, development-only values:
+- the local Docker database default (`DB_PASSWORD=amanet` in `backend/.env.example`, `POSTGRES_PASSWORD: amanet` in
+  `docker-compose.yml`);
+- the demo administrator password (`DEMO_ADMIN_PASSWORD` in `backend/.env.example`, `NEXT_PUBLIC_DEMO_PASSWORD` in
+  `frontend/.env.example`, also shown in the README);
+- the PHPUnit-only `DEMO_ADMIN_PASSWORD` in `backend/phpunit.xml`;
+- `null` placeholders.
+
+`NEXT_PUBLIC_*` values are compiled into the browser bundle, so the demo password must not be set for a production
+build (see below).
 
 Demo credentials are documented as development-only:
 - the seeders refuse to run in production;

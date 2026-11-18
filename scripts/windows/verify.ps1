@@ -1,6 +1,11 @@
-# Lexora Workspace - Phase 1 verification on Windows/Laragon.
-# Runs every check from the Phase 1 report against the local PostgreSQL database and writes
-# verification-logs\verify-*.log plus verification-logs\verify-summary.txt.
+# Lexora Workspace - full verification on Windows/Laragon.
+# Writes verification-logs\verify-*.log plus verification-logs\verify-summary.txt.
+#
+# Data safety: this script never writes to the development database (amanet). It only READS its migration
+# status. PHPUnit uses the amanet_test database (forced in backend\phpunit.xml) and Playwright resets only the
+# disposable amanet_e2e database (frontend\e2e\env.ts refuses any name that does not end in "_e2e").
+# To apply new migrations or the demo seed to the development database, run setup-windows.bat or
+# `php artisan migrate --seed` yourself.
 
 param([switch]$SkipE2E)
 
@@ -41,27 +46,28 @@ try {
     # ---------------------------------------------------------------- e-mail test inbox (Phase 6)
     # PHPUnit's SMTP integration tests and the Playwright suite deliver real messages to this project's
     # ISOLATED E2E Mailpit (docker compose service mailpit-e2e, 127.0.0.1 only). Only that one service is
-    # started if needed; no other container is touched and nothing is downloaded (--pull never).
+    # started if needed; no other container is touched. Its image is downloaded only if it is not present yet
+    # (--pull missing), so a fresh machine works too.
     $mailUi = "http://127.0.0.1:$(if ($env:LEXORA_E2E_MAIL_UI_PORT) { $env:LEXORA_E2E_MAIL_UI_PORT } else { 8027 })/api/v1/info"
     $mailOk = $false
     try { Invoke-WebRequest -UseBasicParsing -Uri $mailUi -TimeoutSec 5 | Out-Null; $mailOk = $true } catch { }
     if (-not $mailOk -and (Get-Command docker -ErrorAction SilentlyContinue)) {
-        Write-Log 'Starting the E2E Mailpit (docker compose up -d --pull never mailpit-e2e)...'
+        Write-Log 'Starting the E2E Mailpit (docker compose up -d --pull missing mailpit-e2e)...'
         Push-Location $Root
-        try { & docker compose up -d --pull never mailpit-e2e 2>&1 | ForEach-Object { Write-Log "  $_" 'DarkGray' } } finally { Pop-Location }
+        try { & docker compose up -d --pull missing mailpit-e2e 2>&1 | ForEach-Object { Write-Log "  $_" 'DarkGray' } } finally { Pop-Location }
         for ($i = 0; $i -lt 20 -and -not $mailOk; $i++) {
             Start-Sleep -Seconds 1
             try { Invoke-WebRequest -UseBasicParsing -Uri $mailUi -TimeoutSec 3 | Out-Null; $mailOk = $true } catch { }
         }
     }
-    Add-Result 'E2E Mailpit (isolated SMTP inbox)' $(if ($mailOk) { 'PASS' } else { 'FAIL' }) $(if ($mailOk) { '' } else { 'Start Docker Desktop, then: docker compose up -d --pull never mailpit-e2e' })
+    Add-Result 'E2E Mailpit (isolated SMTP inbox)' $(if ($mailOk) { 'PASS' } else { 'FAIL' }) $(if ($mailOk) { '' } else { 'Start Docker Desktop, then: docker compose up -d --pull missing mailpit-e2e' })
 
     # ---------------------------------------------------------------- backend
     Invoke-Native 'composer validate' $Backend { & $php $tc.ComposerPhar validate --no-check-publish --no-ansi } -AllowFailure | Out-Null
     # Phase 7: known security advisories (needs internet access to packagist.org / registry.npmjs.org).
     Invoke-Native 'composer audit (PHP dependency advisories)' $Backend { & $php $tc.ComposerPhar audit --no-ansi } -AllowFailure | Out-Null
-    Invoke-Native 'php artisan migrate (status)' $Backend { & $php artisan migrate --force --no-interaction } -AllowFailure | Out-Null
-    Invoke-Native 'php artisan db:seed (idempotent)' $Backend { & $php artisan db:seed --force --no-interaction } -AllowFailure | Out-Null
+    # Read-only: lists applied/pending migrations of the development database without changing it.
+    Invoke-Native 'php artisan migrate:status (development database, read-only)' $Backend { & $php artisan migrate:status --no-interaction } -AllowFailure | Out-Null
     Invoke-Native 'php artisan route:list' $Backend { & $php artisan route:list --except-vendor } -AllowFailure | Out-Null
     Invoke-Native 'PHPUnit (php artisan test)' $Backend { & $php artisan test } -AllowFailure | Out-Null
     Invoke-Native 'Pint (code style)' $Backend { & $php vendor\laravel\pint\builds\pint --test } -AllowFailure | Out-Null

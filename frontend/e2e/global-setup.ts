@@ -29,7 +29,7 @@ export default async function globalSetup() {
   try {
     await clearE2eInbox();
   } catch {
-    throw new Error(`The E2E Mailpit is not reachable at ${E2E_MAIL_UI_URL}. Start it with: docker compose up -d --pull never mailpit-e2e`);
+    throw new Error(`The E2E Mailpit is not reachable at ${E2E_MAIL_UI_URL}. Start Docker Desktop, then: docker compose up -d mailpit-e2e`);
   }
   await warmUp();
 }

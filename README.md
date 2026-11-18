@@ -94,7 +94,10 @@ API conventions: [`docs/api-conventions.md`](docs/api-conventions.md)
 - **Composer 2**
 - **Node.js 20.9+** and npm
 - **PostgreSQL 16** — via Docker (recommended) or a local install
-- Optional: Docker Desktop for PostgreSQL + Mailpit
+- **Docker Desktop** — optional for *running* the application (PostgreSQL can be a local install), but **required for
+  the automated tests and the local mail inbox**: the backend SMTP integration tests and the Playwright suite deliver
+  real e-mails to the isolated `mailpit-e2e` container and fail (they are not skipped) when it is not running. The
+  development inbox (`mailpit`) also runs in Docker.
 
 > **Windows / Laragon:** Laragon's PHP works. Enable `extension=pdo_pgsql` and `extension=pgsql` in `php.ini`
 > (Laragon → PHP → php.ini), then restart. Use Docker Desktop for PostgreSQL, or install PostgreSQL and create the
@@ -108,8 +111,8 @@ Three launchers in the project root automate everything on Windows (PowerShell 5
 
 | Launcher | What it does |
 | --- | --- |
-| `setup-windows.bat` | Picks Laragon's newest PHP ≥ 8.2 and enables `pdo_pgsql`/`pgsql` in its `php.ini` (backup kept as `php.ini.lexora-backup`). Uses Laragon's Composer if it is ≥ 2.7, otherwise downloads the official `composer.phar` into `.tools\` (SHA-256 checked). If Node.js ≥ 20.9 is missing, it installs the official Node 22 LTS zip into `C:\laragon\bin\nodejs` (SHA-256 checked). If PostgreSQL is missing, it installs the official EDB PostgreSQL 16 binaries into `C:\laragon\bin\postgresql` (Authenticode signatures checked) and initialises this project's own instance in `C:\laragon\data\postgresql-16`, listening on localhost only. **Credentials are generated randomly**: the `postgres` superuser password is stored in `C:\laragon\data\postgresql-16-superuser.secret` (readable by your Windows user only) and the `amanet` role's password only in `backend\.env`. Then it creates the `amanet` (development), `amanet_test` (PHPUnit) and `amanet_e2e` (Playwright, reset on every run) databases, runs `composer install`, creates `.env` and the app key, runs `migrate --seed`, `npm ci` and installs Playwright's Chromium. It is safe to run again. |
-| `verify-windows.bat` | Runs the full verification: PHPUnit, Pint, ESLint, TypeScript, production build and the Playwright end-to-end suite (on its own servers and the disposable `amanet_e2e` database — your development data is never modified) |
+| `setup-windows.bat` | Picks Laragon's newest PHP ≥ 8.2 and enables `pdo_pgsql`/`pgsql` in its `php.ini` (backup kept as `php.ini.lexora-backup`). Uses Laragon's Composer if it is ≥ 2.7, otherwise downloads the official `composer.phar` into `.tools\` (SHA-256 checked). If Node.js ≥ 20.9 is missing, it installs the official Node 22 LTS zip into `C:\laragon\bin\nodejs` (SHA-256 checked). If PostgreSQL is missing, it installs the official EDB PostgreSQL 16 binaries into `C:\laragon\bin\postgresql` (Authenticode signatures checked) and initialises this project's own instance in `C:\laragon\data\postgresql-16`, listening on localhost only. **Credentials are generated randomly**: the `postgres` superuser password is stored in `C:\laragon\data\postgresql-16-superuser.secret` (readable by your Windows user only) and the `amanet` role's password only in `backend\.env`. Then it creates the `amanet` (development), `amanet_test` (PHPUnit) and `amanet_e2e` (Playwright, reset on every run) databases, runs `composer install`, creates `.env` and the app key, runs `migrate --seed`, `npm ci` and installs Playwright's Chromium. It is safe to run again. **It writes to the development database:** it applies migrations and the (idempotent) demo seed to `amanet`, which is its purpose. |
+| `verify-windows.bat` | Runs the full verification (13 steps): toolchain and `pdo_pgsql`, the E2E Mailpit, `composer validate`, `composer audit`, a **read-only** `migrate:status` of the development database, `route:list`, PHPUnit (`amanet_test`), Pint, runtime `npm audit`, ESLint, TypeScript, the production build and the Playwright end-to-end suite (its own servers and the disposable `amanet_e2e` database). **It never writes to the development database** (`amanet`); to apply new migrations there, run `setup-windows.bat` or `php artisan migrate`. It starts the `mailpit-e2e` container if Docker is available (pulling its image the first time). |
 | `start-windows.bat` | Starts PostgreSQL, the API and the web app (servers already running are reused, never duplicated), waits until both respond, then opens the browser |
 
 **Ports.** Defaults are API `8000`, web `3000`, PostgreSQL `5432`. If another program already owns one of them
@@ -131,8 +134,11 @@ final "Press any key" prompt (e.g. from a terminal or CI), set `LEXORA_NO_PAUSE=
 docker compose up -d
 ```
 
-This creates the `amanet` database (user `amanet` / password `amanet` — a **local Docker development default only**;
-never reuse it elsewhere) and the `amanet_test` database used by the test suite.
+This pulls the images on first use, starts both Mailpit inboxes and creates the `amanet` database (user `amanet` /
+password `amanet` — a **local Docker development default only**; never reuse it elsewhere), plus the `amanet_test`
+(PHPUnit) and `amanet_e2e` (Playwright) databases. The init script runs only when the `postgres-data` volume is first
+created; on an older volume, create `amanet_e2e` once with
+`docker compose exec postgres psql -U amanet -d amanet -c "CREATE DATABASE amanet_e2e OWNER amanet;"`.
 
 <details>
 <summary>Without Docker</summary>
@@ -141,7 +147,10 @@ never reuse it elsewhere) and the `amanet_test` database used by the test suite.
 CREATE ROLE amanet LOGIN PASSWORD 'amanet' CREATEDB;
 CREATE DATABASE amanet OWNER amanet;
 CREATE DATABASE amanet_test OWNER amanet;
+CREATE DATABASE amanet_e2e OWNER amanet;
 ```
+
+The automated tests still need Docker for the `mailpit-e2e` inbox (`docker compose up -d mailpit-e2e`).
 </details>
 
 ### 2. Backend (Laravel API) — http://localhost:8000
@@ -227,12 +236,24 @@ cd frontend && npx playwright install chromium   # first time only
 cd frontend && npm run test:e2e
 ```
 
-Create the E2E database once (`setup-windows.bat` does it): `CREATE DATABASE amanet_e2e OWNER amanet;`
-The E2E API stores uploaded PDFs in `backend/storage/app/private/e2e-documents` (wiped by global-setup), never in the
-development document storage.
+The E2E database `amanet_e2e` is created by `setup-windows.bat` and by the Docker init script on a new volume
+(otherwise: `CREATE DATABASE amanet_e2e OWNER amanet;`). The E2E API stores uploaded PDFs in
+`backend/storage/app/private/e2e-documents` (wiped by global-setup), never in the development document storage.
 
-The end-to-end and SMTP integration tests need the `mailpit-e2e` container (`docker compose up -d mailpit-e2e`); they send
-real SMTP to it and click the links inside the delivered messages. `verify-windows.bat` checks that it is reachable.
+**Docker is required for the test suites.** The end-to-end and SMTP integration tests need the `mailpit-e2e` container
+(`docker compose up -d mailpit-e2e`, which pulls the image the first time); they send real SMTP to it and click the
+links inside the delivered messages. Without it they fail with an explanation. `verify-windows.bat` starts it when
+Docker is available.
+
+**Which database each command touches**
+
+| Command | Database | Effect |
+| --- | --- | --- |
+| `php artisan test` | `amanet_test` (forced in `phpunit.xml`) | rebuilt by the tests |
+| `npm run test:e2e` / `npx playwright test` | `amanet_e2e` (names not ending in `_e2e` are refused) | `migrate:fresh --seed` on every run |
+| `verify-windows.bat` | `amanet` read-only (`migrate:status`); `amanet_test`; `amanet_e2e` | development data unchanged |
+| `setup-windows.bat` | `amanet` | `migrate --seed` (idempotent) |
+| `php artisan migrate:fresh --seed` | the database in `backend/.env` | **erases it** |
 
 **Accessibility.** The suite runs axe-core WCAG A/AA checks (`e2e/phase7-accessibility.spec.ts`).
 
@@ -260,7 +281,7 @@ Earlier phases: [Phase 6](docs/PHASE_6_IMPLEMENTATION_REPORT.md#20-windows-verif
 | Port 5432 already in use | Stop the local PostgreSQL service or change the port mapping in `docker-compose.yml` and `DB_PORT`. |
 | Dashboard shows "We couldn't reach the server" | The API is not running on `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). |
 | Backend tests fail to connect | Ensure the `amanet_test` database exists (created automatically by Docker on first start). |
-
+| SMTP integration or Playwright tests fail with "E2E Mailpit is not reachable" | Start Docker Desktop, then `docker compose up -d mailpit-e2e`. |
 | Saving returns **409** | Someone (or another tab) changed the record after you opened it, or the matter is archived. Reload; restore archived matters before editing. |
 
 ## Documents (Phase 3)

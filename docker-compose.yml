@@ -29,7 +29,7 @@ services:
 
   # Phase 6: local SMTP capture. Nothing sent here leaves the machine. Ports are configurable because
   # 1025/8025 are often taken by other projects' Mailpit; both bind to 127.0.0.1 only.
-  #   docker compose up -d --pull never mailpit mailpit-e2e
+  #   docker compose up -d mailpit mailpit-e2e        (pulls the image the first time if it is missing)
   mailpit:
     # Development inbox — UI http://localhost:${LEXORA_MAIL_UI_PORT}, SMTP localhost:${LEXORA_MAIL_SMTP_PORT}
     image: axllent/mailpit:v1.31.1
